@@ -1,6 +1,25 @@
 from __future__ import print_function, absolute_import, division
 from . import get_doxygen_root
 
+# added function
+def flatten(xmlnode):
+    # <xmlnode>this.text<child0>child0.text</child0>child0.tail...</xmlnode>
+
+    t = ''
+
+    # text of this node
+    if xmlnode.text is not None:
+        t += xmlnode.text
+
+    # process all children recursively
+    for n in xmlnode:
+        t += ' '
+        t += flatten(n)
+        if n.tail is not None:
+            t += ' '
+            t += n.tail
+
+    return t
 
 def format_xml_paragraph(xmlnode):
     """Format an Doxygen XML segment (principally a detaileddescription)
@@ -86,7 +105,7 @@ class _DoxygenXmlParagraphFormatter(object):
         self.continue_line = True
 
     def visit_parameterlist(self, node):
-        lines = [l for l in type(self)().generic_visit(node).lines if l is not '']
+        lines = [l for l in type(self)().generic_visit(node).lines if l != '']
         self.lines.extend([':parameters:', ''] + ['* %s' % l for l in lines] + [''])
 
     def visit_simplesect(self, node):

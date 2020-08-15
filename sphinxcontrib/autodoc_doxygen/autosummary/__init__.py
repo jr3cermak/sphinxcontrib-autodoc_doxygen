@@ -6,12 +6,14 @@ from functools import reduce
 from itertools import count, groupby
 
 from docutils import nodes
+# add directives from docutils.parsers.rst
+from docutils.parsers.rst import directives
 from docutils.statemachine import StringList, ViewList
 from sphinx import addnodes
 from sphinx.ext.autosummary import Autosummary, autosummary_table
 
 from .. import get_doxygen_root
-from ..autodoc import DoxygenMethodDocumenter, DoxygenClassDocumenter
+from ..autodoc import DoxygenMethodDocumenter, DoxygenClassDocumenter, DoxygenModuleDocumenter
 from ..xmlutils import format_xml_paragraph
 
 
@@ -23,6 +25,8 @@ def import_by_name(name, env=None, prefixes=None, i=0):
     if prefixes is None:
         prefixes = [None]
 
+    # debug
+    import pdb; pdb.set_trace()
     if env is not None:
         parents = env.ref_context.get('cpp:parent_key')
         if parents is not None:
@@ -48,6 +52,18 @@ def _import_by_name(name, i=0):
     name = name.replace('.', '::')
 
     if '::' in name:
+        # add query for sectiondef 'func'
+
+        xpath_query = (
+            './/compoundname[text()="%s"]/../'
+            'sectiondef[@kind="func"]/memberdef[@kind="function"]/'
+            'name[text()="%s"]/..') % tuple(name.rsplit('::', 1))
+        m = root.xpath(xpath_query)
+        if len(m) > 0:
+            obj = m[i]
+            full_name = '.'.join(name.rsplit('::', 1))
+            return full_name, obj, full_name, ''
+
         xpath_query = (
             './/compoundname[text()="%s"]/../'
             'sectiondef[@kind="public-func"]/memberdef[@kind="function"]/'
@@ -80,6 +96,9 @@ def _import_by_name(name, i=0):
 def get_documenter(obj, full_name):
     if obj.tag == 'memberdef' and obj.get('kind') == 'function':
         return DoxygenMethodDocumenter
+    # if kind:func use DoxygenModuleDocumenter
+    if obj.tag == 'memberdef' and obj.get('kind') == 'func':
+        return DoxygenModuleDocumenter
     elif obj.tag == 'compounddef':
         return DoxygenClassDocumenter
 
@@ -87,12 +106,30 @@ def get_documenter(obj, full_name):
 
 
 class DoxygenAutosummary(Autosummary):
+    # add
+    option_spec = {
+        'toctree':      directives.unchanged,
+        'nosignatures': directives.flag,
+        'template':     directives.unchanged,
+        'kind':         directives.unchanged,
+        'generate':     directives.flag,
+    }
+
     def get_items(self, names):
         """Try to import the given names, and return a list of
         ``[(name, signature, summary_string, real_name), ...]``.
         """
         env = self.state.document.settings.env
         items = []
+
+        # Add "generate" directive
+        if 'generate' in self.options:
+            # don't generate a summary for pages
+            if self.options['kind'] == 'page':
+                return []
+
+            modules = get_doxygen_root().xpath('./compound[@kind="namespace"]')
+            names = [m.find('name').text for m in modules]
 
         names_and_counts = reduce(operator.add,
             [tuple(zip(g, count())) for _, g in groupby(names)]) # type: List[(Str, Int)]
@@ -111,7 +148,10 @@ class DoxygenAutosummary(Autosummary):
                 continue
 
             self.bridge.result = StringList()  # initialize for each documenter
-            documenter = get_documenter(obj, parent)(self, real_name, id=obj.get('id'))
+            # change
+            #documenter = get_documenter(obj, parent)(self, real_name, id=obj.get('id'))
+            documenter = get_documenter(obj, parent)(self, real_name, id=obj.get('id'),
+                                                     brief=True, parent=obj.find('..'))
             if not documenter.parse_name():
                 self.warn('failed to parse name %s' % real_name)
                 items.append((display_name, '', '', real_name))
@@ -190,6 +230,8 @@ class DoxygenAutosummary(Autosummary):
         """
         table, table_spec, append_row = self.get_tablespec()
         for name, sig, summary, real_name in items:
+            # debug
+            import pdb; pdb.set_trace()
             qualifier = 'cpp:any'
             # required for cpp autolink
             full_name = real_name.replace('.', '::')
