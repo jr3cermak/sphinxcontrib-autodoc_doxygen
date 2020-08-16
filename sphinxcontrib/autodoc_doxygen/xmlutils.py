@@ -78,14 +78,15 @@ class _DoxygenXmlParagraphFormatter(object):
                     citation = refid[18:]
                     val = [':cite:`%s`' % (citation)]
                     self.lines[-1] += ' '.join(val)
+                    return
                 # Treat the rest of these as general links
                 if refid.find('_1') >= 0:
                     val = [':ref:`%s`' % refid]
                     self.lines[-1] += ' '.join(val)
+                    return
                 else:
                     print('[error] Unimplemented anchor tag: %s' % (ref.tag))
                     raise NotImplementedError(ref.tag)
-                return
             else:
                 print('[error] Unimplemented tag: %s' % (ref.tag))
                 raise NotImplementedError(ref.tag)
@@ -245,9 +246,19 @@ class _DoxygenXmlParagraphFormatter(object):
     # add end
 
     def visit_listitem(self, node):
-        self.lines.append('   - ')
+        char = '*' if node.getparent().tag == 'itemizedlist' else '#'
+        self.lines.append('')
+        self.lines.append(char + ' ')
+        # replaced
+        #self.lines.append('   - ')
         self.continue_line = True
         self.generic_visit(node)
+
+    # add
+    def preformat_text(self, lines):
+        self.lines.extend(('::', ''))
+        self.lines.extend(['  ' + l for l in lines])
+        self.lines.append('')
 
     def visit_preformatted(self, node):
         segment = [node.text if node.text is not None else '']
@@ -257,21 +268,43 @@ class _DoxygenXmlParagraphFormatter(object):
                 segment.append(n.tail)
 
         lines = ''.join(segment).split('\n')
+        # add line
+        self.preformat_text(lines)
         self.lines.extend(('.. code-block:: C++', ''))
         self.lines.extend(['  ' + l for l in lines])
+
+    # add 
+    def visit_programlisting(self, node):
+        lines = []
+        for n in node.getchildren():
+            lines.append(flatten(n))
+        self.preformat_text(lines)
+
+    #add
+    def visit_verbatim(self, node):
+        self.visit_preformatted(node)
 
     def visit_computeroutput(self, node):
         c = node.find('preformatted')
         if c is not None:
             return self.visit_preformatted(c)
+        # add
+        # I don't think we can put links inside
+        # computeroutput text...
+        self.lines[-1] += '``' + flatten(node) + '``'
         return self.visit_preformatted(node)
 
     def visit_xrefsect(self, node):
         if node.find('xreftitle').text == 'Deprecated':
             sublines = type(self)().generic_visit(node).lines
             self.lines.extend(['.. admonition:: Deprecated'] + ['   ' + s for s in sublines])
-        else:
-            raise ValueError(node)
+            return
+        # add - if not depricated
+        title = node.find('xreftitle').text
+        sublines = type(self)().generic_visit(node).lines
+        self.lines.extend(['.. admonition:: %s' % title] + ['   ' + s for s in sublines])
+        #else:
+        #    raise ValueError(node)
 
     def visit_subscript(self, node):
         self.lines[-1] += '\ :sub:`%s` %s' % (node.text, node.tail)

@@ -239,7 +239,11 @@ class DoxygenAutosummary(Autosummary):
             col2 = summary
             append_row(col1, col2)
 
-        self.result.append('   .. rubric: sdsf', 0)
+        # RemovedInSphinx40Warning: Autosummary.result is deprecated
+        # debug: find alternative
+        #import pdb; pdb.set_trace()
+        #self.result.append('   .. rubric: sdsf', 0)
+        self.bridge.result.append('   .. rubric: sdsf', 0)
         return [table_spec, table]
 
 
