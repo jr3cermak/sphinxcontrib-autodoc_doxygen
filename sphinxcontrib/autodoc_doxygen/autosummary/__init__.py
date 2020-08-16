@@ -26,7 +26,7 @@ def import_by_name(name, env=None, prefixes=None, i=0):
         prefixes = [None]
 
     # debug
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     if env is not None:
         parents = env.ref_context.get('cpp:parent_key')
         if parents is not None:

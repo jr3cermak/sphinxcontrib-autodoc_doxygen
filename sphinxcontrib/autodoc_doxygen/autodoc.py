@@ -104,8 +104,8 @@ class DoxygenDocumenter(Documenter):
         memberdocumenters = []
         for (mname, member, isattr) in self.filter_members(members, want_all):
             # change (AutoDirective is depricated?)
-            classes = [cls for cls in itervalues(self.env.app.registry.documenters)
             #classes = [cls for cls in itervalues(AutoDirective._registry)
+            classes = [cls for cls in itervalues(self.env.app.registry.documenters)
                        if cls.can_document_member(member, mname, isattr, self)]
             if not classes:
                 # don't know how to document this member
@@ -122,9 +122,9 @@ class DoxygenDocumenter(Documenter):
         for documenter, isattr in memberdocumenters:
             documenter.generate(
                 all_members=True, real_modname=self.real_modname,
-                check_module=members_check_module and not isattr)
+                #check_module=members_check_module and not isattr)
                 # pending change to line above
-                # check_module=False and not isattr)
+                check_module=False and not isattr)
 
         # reset current objects
         self.env.temp_data['autodoc:module'] = None

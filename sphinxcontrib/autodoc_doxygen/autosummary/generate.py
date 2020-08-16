@@ -56,8 +56,6 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
 
     # read
     items = find_autosummary_in_files(sources)
-    print("[debug] sources:",sources,"items:")
-    sys.exit()
 
     # keep track of new files
     new_files = []
@@ -66,7 +64,7 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
         # added?
         # path = path or output_dir or os.path.abspath(toctree)
         # debug
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         if path is None:
             # The corresponding autosummary:: directive did not have
             # a :toctree: option
@@ -200,6 +198,11 @@ def find_autosummary_in_lines(lines, module=None, filename=None):
                 continue
 
             # add
+
+            m = generate_arg_re.match(line)
+            if m:
+                generate = True
+                continue
 
             m = kind_arg_re.match(line)
             if m and generate:
