@@ -12,7 +12,7 @@ from jinja2.sandbox import SandboxedEnvironment
 from sphinx.jinja2glue import BuiltinTemplateLoader
 from sphinx.util.osutil import ensuredir
 
-from . import import_by_name
+#from . import import_by_name
 # add
 from . import import_by_name, get_doxygen_root
 from ..xmlutils import format_xml_paragraph
@@ -25,7 +25,8 @@ def is_type(node):
 def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
                               #base_path=None, builder=None, template_dir=None):
                               # add toctree argument
-                              base_path=None, builder=None, template_dir=None, toctree=None):
+                              base_path=None, builder=None, template_dir=None, toctree=None,
+                              build_mode=None):
 
     showed_sources = list(sorted(sources))
     if len(showed_sources) > 20:
@@ -52,7 +53,8 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
         template_loader = FileSystemLoader(template_dirs)
     #template_env = SandboxedEnvironment(loader=template_loader)
     # modified
-    template_env = SandboxedEnvironment(loader=template_loader, trim_blocks=True, lstrip_blocks=True)
+    template_env = SandboxedEnvironment(loader=template_loader,
+                                        trim_blocks=True, lstrip_blocks=True)
 
     # read
     items = find_autosummary_in_files(sources)
@@ -61,16 +63,20 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
     new_files = []
 
     for name, path, template_name in sorted(set(items), key=str):
-        # added?
-        # path = path or output_dir or os.path.abspath(toctree)
+        # replace
+        path = path or output_dir or os.path.abspath(toctree)
         # debug
         #import pdb; pdb.set_trace()
-        if path is None:
-            # The corresponding autosummary:: directive did not have
-            # a :toctree: option
-            continue
 
-        path = output_dir or os.path.abspath(path)
+        # this is extra?
+        #if path is None:
+        #    # The corresponding autosummary:: directive did not have
+        #    # a :toctree: option
+        #    print("[debug] directive did not have a :toctree: option")
+        #    continue
+
+        #path = output_dir or os.path.abspath(path)
+        print("[debug] checking path: %s" % (path))
         ensuredir(path)
 
         try:
@@ -85,7 +91,8 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
         if os.path.isfile(fn):
             continue
 
-        new_files.append(fn)
+        # removed?
+        #new_files.append(fn)
 
         if template_name is None:
             if obj.tag == 'compounddef' and obj.get('kind') == 'class':
@@ -96,11 +103,14 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
                 template_name = 'doxypage.rst'
             else:
                 # change
-                #raise NotImplementedError('No template for %s' % obj)
-                raise NotImplementedError('No template for %s (%s)' % (obj, obj.get('kind')))
+                raise NotImplementedError('No template for %s (%s %s)' % (obj.items(), obj.tag, obj.get('kind')))
 
+        print("[debug] template:%s kind: %s obj.items():%s" % (template_name, obj.get('kind'), obj.items()))
         with open(fn, 'w') as f:
+            # debug
+            #import pdb; pdb.set_trace()
             template = template_env.get_template(template_name)
+            # The ns keys feed into the template
             ns = {}
             if obj.tag == 'compounddef' and obj.get('kind') == 'class':
                 ns['methods'] = [e.text for e in obj.findall('.//sectiondef[@kind="public-func"]/memberdef[@kind="function"]/name')]
@@ -111,8 +121,9 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
                 ns['types'] = [e.text for e in obj.findall('./innerclass') if is_type(e)]
                 ns['objtype'] = 'namespace'
             elif obj.tag == 'compounddef' and obj.get('kind') == 'page':
+                print("[debug] xml parsing for %s" % (obj.get('id')))
                 ns['title'] = obj.find('title').text
-                ns['text'] = format_xml_paragraph(obj.find('detaileddescription'))
+                ns['text'] = format_xml_paragraph(obj.find('detaileddescription'),build_mode)
             else:
                 raise NotImplementedError(obj)
 
@@ -144,13 +155,15 @@ def find_autosummary_in_files(filenames):
 
     See `find_autosummary_in_lines`.
     """
+    # todo: break when this doesn't exist
+    # look for modules and standalone documentation pages, but *not* the index page
+    # itself (which it links to from itself for some reason...)
     documented = []
     for filename in filenames:
-        with codecs.open(filename, 'r', encoding='utf-8',
-                         errors='ignore') as f:
+        with codecs.open(filename, 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.read().splitlines()
-            documented.extend(find_autosummary_in_lines(lines,
-                                                        filename=filename))
+            documented.extend(find_autosummary_in_lines(lines, filename=filename))
+
     return documented
 
 
@@ -255,6 +268,8 @@ def process_generate_options(app):
     genfiles = app.config.autosummary_generate
     # add
     toctree = app.config.autosummary_toctree
+    # This is important to handle \htmlonly and \latexonly directives
+    sphinx_build_mode = app.config.sphinx_build_mode
 
     if genfiles and not hasattr(genfiles, '__len__'):
         env = app.builder.env
@@ -273,4 +288,4 @@ def process_generate_options(app):
     generate_autosummary_docs(genfiles, builder=app.builder,
     # add toctree argument
     #                         suffix=ext, base_path=app.srcdir)
-                              suffix=ext, base_path=app.srcdir, toctree=toctree)
+                              suffix=ext, base_path=app.srcdir, toctree=toctree, build_mode=sphinx_build_mode)

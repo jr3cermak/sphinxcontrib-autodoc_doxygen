@@ -1,6 +1,15 @@
 from __future__ import print_function, absolute_import, division
 from . import get_doxygen_root
 
+# Need regular expressions to extract math labels
+import re
+
+# If flint is available, use it to help doxygen(XML).
+try:
+    import flint
+except:
+    pass
+
 # added function
 def flatten(xmlnode):
     # <xmlnode>this.text<child0>child0.text</child0>child0.tail...</xmlnode>
@@ -21,7 +30,7 @@ def flatten(xmlnode):
 
     return t
 
-def format_xml_paragraph(xmlnode):
+def format_xml_paragraph(xmlnode,build_mode):
     """Format an Doxygen XML segment (principally a detaileddescription)
     as a paragraph for inclusion in the rst document
 
@@ -34,7 +43,8 @@ def format_xml_paragraph(xmlnode):
     lines
         A list of lines.
     """
-    return [l.rstrip() for l in _DoxygenXmlParagraphFormatter().generic_visit(xmlnode).lines]
+    return [l.rstrip() for l in
+        _DoxygenXmlParagraphFormatter().generic_visit(xmlnode,build_mode=build_mode).lines]
 
 
 class _DoxygenXmlParagraphFormatter(object):
@@ -47,52 +57,224 @@ class _DoxygenXmlParagraphFormatter(object):
     def __init__(self):
         self.lines = ['']
         self.continue_line = False
+        # We need to track specified math lables and place them prior to the ::math blocks
+        self.math_labels = []
+        self.build_mode = None
+
+    # new
+    def visit_latexonly(self, node):
+        if self.build_mode != 'latexpdf':
+            return
+
+        # debug
+        #import pdb; pdb.set_trace()
+
+        # Just pass text through at this point
+        #self.lines.append(node.text)
+
+        # Convert \\ref{tag} to :ref:` ` and the sphinx latex processor
+        # converts it to a proper label reference.
+        text = node.text
+        if text == None:
+            return
+
+        ref_match = re.search('\\\\ref{(.*?)}', text)
+        #import pdb; pdb.set_trace()
+        if ref_match is not None:
+            tag_string = ref_match.groups()[0]
+            #val = [' :ref:`%s`' % tag_string]
+            val = [' :latex:`%s`' % text.strip()]
+            self.lines[-1] += ''.join(val)
+
+        return
+
+    # new
+    def visit_htmlonly(self, node):
+        if self.build_mode != 'html':
+            return
+
+        text = node.text
+        if text == None:
+            return
+
+        # Check for \eqref2{tag,txt} and convert to :ref:`tag`_
+        eqref_match = re.search('\\\eqref2{(.*?)}', text)
+        if eqref_match is not None:
+            tag_string = eqref_match.groups()[0]
+            if tag_string.find(',') >= 0:
+                fc = tag_string.find(',')
+                val = [' :math:numref:`%s` - %s' % (tag_string[0:fc],tag_string[fc+1:])]
+            else:
+                val = [' :math:numref:`%s`' % tag_string]
+            self.lines[-1] += ''.join(val)
+
+    # new
+    # reStructured text only permits one label per math:: block
+    def emit_math_labels(self):
+        if len(self.math_labels) == 0:
+            return
+
+        print("[debug] inserting math labels")
+
+        math_block_idx = -1
+        for idx in range(len(self.lines)-1,0,-1):
+            if self.lines[idx].startswith('.. math::'):
+                math_block_idx = idx
+                break
+
+        # Add new label right after the math:: block
+        if math_block_idx >=0:
+            new_lines = self.lines[0:math_block_idx+1]
+            new_label = "   :label: %s" % (self.math_labels[0])
+            new_lines.append(new_label)
+            new_lines.append('')
+            new_lines = new_lines + self.lines[math_block_idx+1:]
+            self.lines = new_lines
+
+        #import pdb; pdb.set_trace()
+        self.math_labels = []
 
     def visit(self, node):
         method = 'visit_' + node.tag
         print("[debug] method=%s" % (method))
+        if len(self.math_labels) > 0 and node.tag != 'formula':
+          self.emit_math_labels()
         visitor = getattr(self, method, self.generic_visit)
         return visitor(node)
 
-    def generic_visit(self, node):
+    def generic_visit(self, node, build_mode=None):
+        if build_mode:
+            print("[debug] Setting build mode: %s" % (build_mode))
+            self.build_mode = build_mode
         for child in node.getchildren():
             self.visit(child)
         return self
 
-    def visit_ref(self, node):
-        print("[debug] node.items()=",node.items())
+    # This is the original version with some debug
+    # statements
+    def visit_ref_angus(self, node):
+    #def visit_ref(self, node):
+        # find target node
         refid = node.get('refid')
+        kind = None
+        real_name = None
+        name_node = None
+
+        print("[debug] node.items():%s" % node.items())
+        if node.get('kindref') == 'member':
+            ref = get_doxygen_root().find('./compounddef/sectiondef/memberdef[@id="%s"]' % refid)
+            # only set the kind if we find a function, otherwise it might be
+            # a documentation reference
+            if ref is not None:
+                kind = 'func'
+        elif node.get('kindref') == 'compound':
+            ref = get_doxygen_root().find('./compounddef[@id="%s"]' % refid)
+            if ref is not None:
+                if ref.get('kind') == 'namespace':
+                    kind = 'mod'
+                elif ref.get('kind') == 'type':
+                    kind = 'type'
+        else:
+            # we probably don't get here
+            print('[debug] warning: slow ref search!')
+            ref = get_doxygen_root().find('.//*[@id="%s"]' % refid)
+
+        # get name of target
+        if ref is not None:
+            name_node = None
+
+            if kind == 'func':
+                name_node = ref.find('./name')
+            elif kind == 'mod' or kind == 'type':
+                name_node = ref.find('./compoundname')
+
+            if name_node is not None:
+                real_name = name_node.text.split('::')[-1]
+            else:
+                print("[debug] unimplemented link")
+                self.lines[-1] += '(unimplemented link)' + node.text
+                return
+        else:
+            # couldn't find link
+            real_name = None
+
+        if kind is None:
+            # section link, we hope!
+            val = ['`']
+        else:
+            print("[debug] :f:%s" % (kind))
+            val = [':f:%s:`' % kind]
+
+        val.append(node.text)
+        if real_name is not None:
+            val.extend((' <', real_name, '>`'))
+        else:
+            val.append('`')
+
+        if kind is None:
+            # convert into a proper link
+            val.append('_')
+
+        print("[debug] kind(%s) real_name(%s) name_node(%s) val(%s)" %
+            (kind, real_name, name_node, val))
+        self.lines[-1] += ''.join(val)
+
+    # This was the modified original
+    def visit_ref(self, node):
+    #def visit_ref_modified(self, node):
+        refid = node.get('refid')
+        kind = None
+        name_node = None
+        ream_name = None
+
+        # debug
+        #if refid == 'General_Coordinate':
+        #  import pdb; pdb.set_trace()
         ref = get_doxygen_root().findall('.//*[@id="%s"]' % refid)
+        print("[debug] refid(%s) kindref(%s) kind(%s)" %
+            (refid, node.get('kindref'), node.get('kind')))
         if ref:
             ref = ref[0]
+            print("[debug] ref(%s)" % ref.items())
             if ref.tag == 'memberdef':
                 parent = ref.xpath('./ancestor::compounddef/compoundname')[0].text
                 name = ref.find('./name').text
                 real_name = parent + '::' + name
             elif ref.tag in ('compounddef', 'enumvalue'):
+                if ref.get('kind') == 'page':
+                    # :ref: works, but requires an explicit tag placed at the top of pages
+                    # that generates an INFO message.  FIX LATER.
+                    val = [':ref:`%s`' % ref.get('id')]
+                    #val = ['`%s`_' % refid]
+                    self.lines[-1] += ''.join(val)
+                    return
                 name_node = ref.find('./name')
                 real_name = name_node.text if name_node is not None else ''
-            elif ref.tag in ('anchor'):
+            elif ref.tag in ('anchor','sect1','sect2'):
                 # If _1CITEREF_ this is a doxygen processed citation
                 if refid.find('_1CITEREF_') >= 0:
                     citation = refid[18:]
                     val = [':cite:`%s`' % (citation)]
-                    self.lines[-1] += ' '.join(val)
+                    self.lines[-1] += ''.join(val)
                     return
                 # Treat the rest of these as general links
                 if refid.find('_1') >= 0:
                     val = [':ref:`%s`' % refid]
-                    self.lines[-1] += ' '.join(val)
+                    #val = ['`%s`_' % refid]
+                    self.lines[-1] += ''.join(val)
                     return
                 else:
                     print('[error] Unimplemented anchor tag: %s' % (ref.tag))
                     raise NotImplementedError(ref.tag)
             else:
                 print('[error] Unimplemented tag: %s' % (ref.tag))
+                import pdb; pdb.set_trace()
                 raise NotImplementedError(ref.tag)
         else:
             real_name = None
 
+        #debug
+        #import pdb; pdb.set_trace()
         val = [':cpp:any:`', node.text]
         if real_name:
             val.extend((' <', real_name, '>`'))
@@ -101,6 +283,8 @@ class _DoxygenXmlParagraphFormatter(object):
         if node.tail is not None:
             val.append(node.tail)
 
+        print("[debug] kind(%s) real_name(%s) node_name(%s)" %
+            (kind, real_name, name_node))
         self.lines[-1] += ''.join(val)
 
     # add visit_ulink
@@ -175,10 +359,23 @@ class _DoxygenXmlParagraphFormatter(object):
     def visit_formula(self, node):
         text = node.text.strip()
 
+        # Remove the faked link for the html version
+        if self.build_mode == 'latexpdf':
+            label_match = re.search(' \\\\label{(html:.*?)}.*?\\\\\\\\', text)
+            if label_match:
+                replace_string = label_match.group()
+                text = text.replace(replace_string,'')
+
         # detect inline or block math
         if text.startswith('\\[') or not text.startswith('$'):
             if text.startswith('\\['):
                 text = text[2:-2]
+
+            # if we are emitting a math block and we have
+            # pending math labels, go back and emit those
+            # first.
+            if len(self.math_labels) > 0:
+                self.emit_math_labels()
 
             self.lines.append('')
             self.lines.append('.. math:: ' + text)
@@ -193,6 +390,12 @@ class _DoxygenXmlParagraphFormatter(object):
 
             self.continue_line = True
 
+        # detect \label{html:tag} blocks
+        if text.find('\\label') >= 0:
+            label_matches = re.findall('\\\label{html:(.*?)} ',text)
+            if len(label_matches) > 0:
+                [self.math_labels.append(i) for i in label_matches]
+
     def visit_parametername(self, node):
         if 'direction' in node.attrib:
             direction = '[%s] ' % node.get('direction')
@@ -206,15 +409,18 @@ class _DoxygenXmlParagraphFormatter(object):
         self.continue_line = True
 
     def visit_parameterlist(self, node):
-        # Fix python warning
-        lines = [l for l in type(self)().generic_visit(node).lines if l != '']
+        lines = [l for l in type(self)().generic_visit(node).lines if l is not '']
         # replaced
         #self.lines.extend([':parameters:', ''] + ['* %s' % l for l in lines] + [''])
         self.lines.extend([''] + lines + [''])
 
+    # Doxygen generates a simplesect for functions with
+    # a specified return argument.  For now, we leave a :returns:
+    # marker so we can fix up the document using flint.
     def visit_simplesect(self, node):
+        #import pdb; pdb.set_trace()
         if node.get('kind') == 'return':
-            self.lines.append(':returns: ')
+            self.lines.append(':returns undefined: ')
             self.continue_line = True
         self.generic_visit(node)
 
@@ -270,8 +476,9 @@ class _DoxygenXmlParagraphFormatter(object):
         lines = ''.join(segment).split('\n')
         # add line
         self.preformat_text(lines)
-        self.lines.extend(('.. code-block:: C++', ''))
-        self.lines.extend(['  ' + l for l in lines])
+        # extra? no effect
+        #self.lines.extend(('.. code-block:: C++', ''))
+        #self.lines.extend(['  ' + l for l in lines])
 
     # add 
     def visit_programlisting(self, node):
@@ -292,7 +499,8 @@ class _DoxygenXmlParagraphFormatter(object):
         # I don't think we can put links inside
         # computeroutput text...
         self.lines[-1] += '``' + flatten(node) + '``'
-        return self.visit_preformatted(node)
+        # omitted
+        #return self.visit_preformatted(node)
 
     def visit_xrefsect(self, node):
         if node.find('xreftitle').text == 'Deprecated':

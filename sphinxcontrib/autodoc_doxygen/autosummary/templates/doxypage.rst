@@ -1,3 +1,9 @@
+.. _{{ name }}:
+{# comment
+When the name is provided, we get "(INFO/1) Duplicate implicit target name:"
+without this, we get undefined reference.  This needs to be fixed later.
+#}
+
 {{ underline }}
 {{ name }}
 {{ underline }}

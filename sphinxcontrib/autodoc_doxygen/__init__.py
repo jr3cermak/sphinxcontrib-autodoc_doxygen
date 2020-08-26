@@ -39,7 +39,8 @@ def get_doxygen_root():
 def setup(app):
     import sphinx.ext.autosummary
     # add DoxygenTypeDocumenter and DoxygenModuleDocumenter
-    from .autodoc import DoxygenClassDocumenter, DoxygenMethodDocumenter, \
+    #from .autodoc import DoxygenClassDocumenter, DoxygenMethodDocumenter, \
+    from .autodoc import DoxygenMethodDocumenter, \
             DoxygenTypeDocumenter, DoxygenModuleDocumenter
     from .autosummary import DoxygenAutosummary, DoxygenAutoEnum
     from .autosummary.generate import process_generate_options
@@ -52,7 +53,7 @@ def setup(app):
 
     # add DoxygenTypeDocumenter and DoxygenModuleDocumenter
     app.add_autodocumenter(DoxygenModuleDocumenter)
-    app.add_autodocumenter(DoxygenClassDocumenter)
+    #app.add_autodocumenter(DoxygenClassDocumenter)
     app.add_autodocumenter(DoxygenMethodDocumenter)
     app.add_autodocumenter(DoxygenTypeDocumenter)
     #app.add_config_value("doxygen_xml", "", True)

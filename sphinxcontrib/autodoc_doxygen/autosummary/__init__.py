@@ -13,7 +13,8 @@ from sphinx import addnodes
 from sphinx.ext.autosummary import Autosummary, autosummary_table
 
 from .. import get_doxygen_root
-from ..autodoc import DoxygenMethodDocumenter, DoxygenClassDocumenter, DoxygenModuleDocumenter
+#from ..autodoc import DoxygenMethodDocumenter, DoxygenClassDocumenter, DoxygenModuleDocumenter
+from ..autodoc import DoxygenMethodDocumenter, DoxygenModuleDocumenter
 from ..xmlutils import format_xml_paragraph
 
 
@@ -25,16 +26,26 @@ def import_by_name(name, env=None, prefixes=None, i=0):
     if prefixes is None:
         prefixes = [None]
 
-    # debug
-    #import pdb; pdb.set_trace()
+    # angus
     if env is not None:
+        parent = env.ref_context.get('cpp:parent_symbol')
+        parent_symbols = []
+        while parent is not None and parent.identifier is not None:
+            parent_symbols.insert(0, str(parent.identifier))
+            parent = parent.parent
+        prefixes.append('::'.join(parent_symbols))
+
+    # orig
+    if env is not None:
+        if env.ref_context != None and env.ref_context != {}:
+            print("[debug] parents: %s" % env.ref_context)
         parents = env.ref_context.get('cpp:parent_key')
         if parents is not None:
             parent_symbols = [p[0].get_display_string() for p in parents]
             prefixes.append('::'.join(parent_symbols))
 
+    # unmodified
     tried = []
-
     for prefix in prefixes:
         try:
             if prefix:
@@ -46,16 +57,13 @@ def import_by_name(name, env=None, prefixes=None, i=0):
             tried.append(prefixed_name)
     raise ImportError('no module named %s' % ' or '.join(tried))
 
-
 def _import_by_name(name, i=0):
     root = get_doxygen_root()
     name = name.replace('.', '::')
 
     if '::' in name:
-        # add query for sectiondef 'func'
-
         xpath_query = (
-            './/compoundname[text()="%s"]/../'
+            './compounddef/compoundname[text()="%s"]/../'
             'sectiondef[@kind="func"]/memberdef[@kind="function"]/'
             'name[text()="%s"]/..') % tuple(name.rsplit('::', 1))
         m = root.xpath(xpath_query)
@@ -64,6 +72,32 @@ def _import_by_name(name, i=0):
             full_name = '.'.join(name.rsplit('::', 1))
             return full_name, obj, full_name, ''
 
+    xpath_query = ('./compounddef/compoundname[text()="%s"]/..' % name)
+    m = root.xpath(xpath_query)
+    if len(m) > 0:
+        obj = m[i]
+        return (name, obj, name, '')
+
+    raise ImportError()
+
+def _import_by_name_original(name, i=0):
+    root = get_doxygen_root()
+    name = name.replace('.', '::')
+    print("[debug] import: %s" % name)
+
+    if '::' in name:
+        # add query for sectiondef 'func'
+        xpath_query = (
+            './compounddef/compoundname[text()="%s"]/../'
+            'sectiondef[@kind="func"]/memberdef[@kind="function"]/'
+            'name[text()="%s"]/..') % tuple(name.rsplit('::', 1))
+        m = root.xpath(xpath_query)
+        if len(m) > 0:
+            obj = m[i]
+            full_name = '.'.join(name.rsplit('::', 1))
+            return full_name, obj, full_name, ''
+
+        # existing queries
         xpath_query = (
             './/compoundname[text()="%s"]/../'
             'sectiondef[@kind="public-func"]/memberdef[@kind="function"]/'
@@ -84,7 +118,11 @@ def _import_by_name(name, i=0):
             full_name = '.'.join(name.rsplit('::', 1))
             return full_name, obj, full_name, ''
 
-    xpath_query = ('.//compoundname[text()="%s"]/..' % name)
+    # modified? -- ok
+    #xpath_query = ('.//compoundname[text()="%s"]/..' % name)
+    #if name == 'mom_ale':
+    #    import pdb; pdb.set_trace()
+    xpath_query = ('./compounddef/compoundname[text()="%s"]/..' % name)
     m = root.xpath(xpath_query)
     if len(m) > 0:
         obj = m[i]
@@ -95,12 +133,15 @@ def _import_by_name(name, i=0):
 
 def get_documenter(obj, full_name):
     if obj.tag == 'memberdef' and obj.get('kind') == 'function':
+        print("[debug] Calling DoxygenMethodDocumenter")
         return DoxygenMethodDocumenter
-    # if kind:func use DoxygenModuleDocumenter
-    if obj.tag == 'memberdef' and obj.get('kind') == 'func':
-        return DoxygenModuleDocumenter
     elif obj.tag == 'compounddef':
-        return DoxygenClassDocumenter
+        print("[debug] Calling DoxygenModuleDocumenter")
+        return DoxygenModuleDocumenter
+    # if kind:func use DoxygenModuleDocumenter
+    #if obj.tag == 'memberdef' and obj.get('kind') == 'func':
+    #    print("[debug] Calling DoxygenModuleDocumenter:func")
+    #    return DoxygenModuleDocumenter
 
     raise NotImplementedError(obj.tag)
 
@@ -147,6 +188,7 @@ class DoxygenAutosummary(Autosummary):
                 items.append((name, '', '', name))
                 continue
 
+            # Replace depricated self.result
             self.bridge.result = StringList()  # initialize for each documenter
             # change
             #documenter = get_documenter(obj, parent)(self, real_name, id=obj.get('id'))
@@ -231,11 +273,15 @@ class DoxygenAutosummary(Autosummary):
         table, table_spec, append_row = self.get_tablespec()
         for name, sig, summary, real_name in items:
             # debug
-            import pdb; pdb.set_trace()
-            qualifier = 'cpp:any'
+            #import pdb; pdb.set_trace()
             # required for cpp autolink
-            full_name = real_name.replace('.', '::')
-            col1 = ':%s:`%s <%s>`' % (qualifier, name, full_name)
+            # original
+            #qualifier = 'cpp:any'
+            #full_name = real_name.replace('.', '::')
+            qualifier = 'f:' + self.options['kind']
+            # modified
+            #col1 = ':%s:`%s <%s>`' % (qualifier, name, full_name)
+            col1 = ':%s:`%s`' % (qualifier, name)
             col2 = summary
             append_row(col1, col2)
 
@@ -243,7 +289,8 @@ class DoxygenAutosummary(Autosummary):
         # debug: find alternative
         #import pdb; pdb.set_trace()
         #self.result.append('   .. rubric: sdsf', 0)
-        self.bridge.result.append('   .. rubric: sdsf', 0)
+        # removed
+        #self.bridge.result.append('   .. rubric: sdsf', 0)
         return [table_spec, table]
 
 
