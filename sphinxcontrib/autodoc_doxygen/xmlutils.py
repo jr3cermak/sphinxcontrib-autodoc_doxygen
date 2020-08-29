@@ -63,7 +63,7 @@ class _DoxygenXmlParagraphFormatter(object):
 
     # new
     def visit_latexonly(self, node):
-        if self.build_mode != 'latexpdf':
+        if not(self.build_mode in ('latexpdf','latex')):
             return
 
         # debug
