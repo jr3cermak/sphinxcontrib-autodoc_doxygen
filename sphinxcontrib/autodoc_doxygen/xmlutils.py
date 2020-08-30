@@ -316,8 +316,17 @@ class _DoxygenXmlParagraphFormatter(object):
             real_name = None
 
         #debug
+        code_type = 'cpp'
+        if node.text.find('.F90'):
+            #import pdb; pdb.set_trace()
+            code_type = 'f'
+            # for now treat these as text
+            val = ['``%s``' % node.text]
+            self.lines[-1] += ''.join(val)
+            return
+
         #import pdb; pdb.set_trace()
-        val = [':cpp:any:`', node.text]
+        val = [':%s:any:`' % code_type, node.text]
         if real_name:
             val.extend((' <', real_name, '>`'))
         else:
@@ -456,11 +465,11 @@ class _DoxygenXmlParagraphFormatter(object):
         #self.lines.extend([':parameters:', ''] + ['* %s' % l for l in lines] + [''])
         self.lines.extend([''] + lines + [''])
 
-    # Doxygen generates a simplesect for functions with
-    # a specified return argument.  For now, we leave a :returns:
+    # TODO: Doxygen generates a simplesect for functions with
+    # a specified return argument.  For now, we leave as
+    # :returns undefined:
     # marker so we can fix up the document using flint.
     def visit_simplesect(self, node):
-        #import pdb; pdb.set_trace()
         if node.get('kind') == 'return':
             self.lines.append(':returns undefined: ')
             self.continue_line = True
@@ -473,6 +482,17 @@ class _DoxygenXmlParagraphFormatter(object):
         title_node = node.find('title')
         if title_node is not None:
             title = title_node.text
+            # Filter html data (possibly if we see a <, / and >)
+            #print("[debug] title(%s)" % (title))
+            if title.find('<') >=0 and title.find('>') >=0 and title.find('/') >=0:
+                html_match = False
+                # Filter <tt> => ``
+                if title.find("<tt>") >= 0:
+                    title = title.replace('<tt>','``')
+                    title = title.replace('</tt>','``')
+                    html_match = True
+                if not(html_match) and self.verbosity > 0:
+                    print("[debug] unmatched html (%s)" % (title))
             self.lines.append(title)
             self.lines.append(len(title) * char)
             self.lines.append('')
@@ -516,7 +536,7 @@ class _DoxygenXmlParagraphFormatter(object):
             char = '*'
         else:
             char = '#.'
-        if self.verbosity > 0: print("[debug] listitem indent = %s" % (self.indent))
+        if self.verbosity > 1: print("[debug] listitem indent = %s" % (self.indent))
         self.lines.append(' '*(self.indent*2) + char + ' ')
         # replaced
         #self.lines.append('   - ')

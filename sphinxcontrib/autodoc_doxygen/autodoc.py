@@ -2,6 +2,8 @@ from __future__ import print_function, absolute_import, division
 
 # add re module
 import re
+# check loaded modules
+import os
 
 # add directives from docutils.parsers.rst
 from docutils.parsers.rst import directives
@@ -15,6 +17,11 @@ from . import get_doxygen_root
 # add flatten
 from .xmlutils import format_xml_paragraph, flatten
 
+# Use flint to provide additional information where doxygen xml lacks
+try:
+    import flint
+except:
+    pass
 
 class DoxygenDocumenter(Documenter):
     # Variables to store the names of the object being documented. modname and fullname are redundant,
@@ -199,7 +206,8 @@ class DoxygenModuleDocumenter(DoxygenDocumenter):
                 description = self.object.find('briefdescription')
 
         if self.env.app.verbosity > 0: print("[debug] get_doc(%s)(%s)" % (self.brief, description.items()))
-        doc = [format_xml_paragraph(description, self.env.config.sphinx_build_mode, verbosity=self.env.app.verbosity)]
+        doc = [format_xml_paragraph(description, self.env.config.sphinx_build_mode,
+            verbosity=self.env.app.verbosity)]
 
         if not any(len(d.strip()) for d in doc[0]):
             doc.append(['<undocumented>', ''])
@@ -368,8 +376,9 @@ class DoxygenClassDocumenter(DoxygenDocumenter):
 
     def get_doc(self):
         detaileddescription = self.object.find('detaileddescription')
-        # add build_mode
-        doc = [format_xml_paragraph(detaileddescription, self.env.config.sphinx_build_mode, verbosity=self.env.app.verbosity)]
+        # add build_mode and verbosity
+        doc = [format_xml_paragraph(detaileddescription, self.env.config.sphinx_build_mode,
+            verbosity=self.env.app.verbosity)]
         return doc
 
     def get_object_members(self, want_all):
@@ -424,7 +433,16 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
 
         # determine which directive to use from the typefield
         typefield = self.get_typefield()
-        directive = 'subroutine' if 'subroutine' in typefield else 'function'
+        if 'subroutine' in typefield:
+            directive = 'subroutine'
+        else:
+            directive = 'function'
+
+        if self.env.app.verbosity > 0:
+            print("[debug] DoxygenMethodDocumenter directive(%s) name(%s)" % (directive,name))
+            if name.find('eos_domain') >= 0 or name.find('ale_main') >= 0:
+                #import pdb; pdb.set_trace()
+                pass
 
         self.add_line(u'.. %s:%s:: %s%s' % (domain, directive, name, sig),
                       sourcename)
@@ -466,17 +484,25 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
         self.object = match[0]
 
     def get_doc(self):
+        doc = [format_xml_paragraph(self.object.find('briefdescription'), self.env.config.sphinx_build_mode,
+            verbosity=self.env.app.verbosity)]
         # debug
-        #if self.object.find('name').text == 'eos_domain':
-        #    import pdb; pdb.set_trace()
-        doc = [format_xml_paragraph(self.object.find('briefdescription'), self.env.config.sphinx_build_mode, verbosity=self.env.app.verbosity)]
+        if self.object.find('name').text == 'eos_domain':
+            #import pdb; pdb.set_trace()
+            pass
         #detaileddescription = self.object.find('detaileddescription')
         #doc = [format_xml_paragraph(detaileddescription,self.env.config.sphinx_build_mode)]
 
         # add parameter documentation (in detaileddescription) for main function documentation
         if not self.brief:
-            doc += [format_xml_paragraph(self.object.find('detaileddescription'), self.env.config.sphinx_build_mode, verbosity=self.env.app.verbosity)]
+            doc += [format_xml_paragraph(self.object.find('detaileddescription'), self.env.config.sphinx_build_mode,
+                verbosity=self.env.app.verbosity)]
 
+            if self.object.find('name').text == 'eos_domain':
+                #import pdb; pdb.set_trace()
+                pass
+            # File location
+            # ffile = self.object.find('location').get('file')
             # add references/referencedby
             references = self.object.findall('references')
             for ref in references:
@@ -543,6 +569,8 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
             rtype = None
         elif 'function' in typefield:
             # get the return type
+            # watch for different patterns
+            #import pdb; pdb.set_trace()
             m = re.search(r'(\S+)\s+function', typefield)
             if m:
                 rtype = m.group(0)
@@ -611,7 +639,8 @@ class DoxygenTypeDocumenter(DoxygenDocumenter):
     #def get_doc(self, encoding):
     # encoding is depricated
     def get_doc(self):
-        desc = [format_xml_paragraph(self.object.find('briefdescription'), self.env.config.sphinx_build_mode, verbosity=self.env.app.verbosity)]
+        desc = [format_xml_paragraph(self.object.find('briefdescription'),
+            self.env.config.sphinx_build_mode, verbosity=self.env.app.verbosity)]
 
         for member in self.object.findall('./sectiondef/memberdef'):
             attribs = flatten(member.find('type')).strip().split(', ')
