@@ -123,7 +123,10 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
             elif obj.tag == 'compounddef' and obj.get('kind') == 'page':
                 print("[debug] xml parsing for %s" % (obj.get('id')))
                 ns['title'] = obj.find('title').text
-                ns['text'] = format_xml_paragraph(obj.find('detaileddescription'),build_mode)
+                #ns['text'] = format_xml_paragraph(obj.find('detaileddescription'),build_mode)
+                ns = format_xml_paragraph(obj.find('detaileddescription'), build_mode, nsOrig=ns, verbosity=builder.app.verbosity)
+                #if obj.get('id') == 'Specifics':
+                #    import pdb; pdb.set_trace()
             else:
                 raise NotImplementedError(obj)
 

@@ -11,3 +11,11 @@ without this, we get undefined reference.  This needs to be fixed later.
 {% for line in text %}
 {{ line }}
 {% endfor %}
+{% if footnotes %}
+
+.. rubric:: Footnotes
+
+{% for line in footnotes %}
+.. [#] {{ line }}
+{% endfor %}
+{% endif %}

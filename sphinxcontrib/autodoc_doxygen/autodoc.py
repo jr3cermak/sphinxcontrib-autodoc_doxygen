@@ -168,13 +168,13 @@ class DoxygenModuleDocumenter(DoxygenDocumenter):
                                  'the following xpath: "%s"' % (self.fullname, xpath_query))
 
         self.object = match[0]
-        print("[debug] xpath(%s) match(%s)" % (xpath_query,match[0].items()))
+        if self.env.app.verbosity > 0: print("[debug] xpath(%s) match(%s)" % (xpath_query,match[0].items()))
         return True
 
     # todo: typo: report upstream
     #def format_signaure(self):
     def format_signature(self):
-        print("[debug] DoxygenModuleDocumenter format_signature called")
+        if self.env.app.verbosity > 0: print("[debug] DoxygenModuleDocumenter format_signature called")
         #import pdb; pdb.set_trace()
         #return ''
 
@@ -198,8 +198,8 @@ class DoxygenModuleDocumenter(DoxygenDocumenter):
             if not len(description) and not description.text.strip():
                 description = self.object.find('briefdescription')
 
-        print("[debug] get_doc(%s)(%s)" % (self.brief, description.items()))
-        doc = [format_xml_paragraph(description,self.env.config.sphinx_build_mode)]
+        if self.env.app.verbosity > 0: print("[debug] get_doc(%s)(%s)" % (self.brief, description.items()))
+        doc = [format_xml_paragraph(description, self.env.config.sphinx_build_mode, verbosity=self.env.app.verbosity)]
 
         if not any(len(d.strip()) for d in doc[0]):
             doc.append(['<undocumented>', ''])
@@ -249,7 +249,7 @@ class DoxygenModuleDocumenter(DoxygenDocumenter):
                 if class_obj.get('kind') == 'type':
                     members.append((class_obj.find('compoundname').text, class_obj))
 
-        print("[debug] members(%s)" % (members))
+        if self.env.app.verbosity > 0: print("[debug] members(%s)" % (members))
         #import pdb; pdb.set_trace()
         # Calls the plain DoxygenDocumenter to generate the rst
         super().document_members(all_members=members)
@@ -289,7 +289,7 @@ class DoxygenModuleDocumenter(DoxygenDocumenter):
             return
 
         sourcename = self.get_sourcename()
-        print("[debug] add_title:%s" % (sourcename))
+        if self.env.app.verbosity > 0: print("[debug] add_title:%s" % (sourcename))
 
         # add title
         title = '%s module reference' % self.format_name()
@@ -367,7 +367,7 @@ class DoxygenClassDocumenter(DoxygenDocumenter):
     def get_doc(self):
         detaileddescription = self.object.find('detaileddescription')
         # add build_mode
-        doc = [format_xml_paragraph(detaileddescription,self.env.config.sphinx_build_mode)]
+        doc = [format_xml_paragraph(detaileddescription, self.env.config.sphinx_build_mode, verbosity=self.env.app.verbosity)]
         return doc
 
     def get_object_members(self, want_all):
@@ -467,13 +467,13 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
         # debug
         #if self.object.find('name').text == 'eos_domain':
         #    import pdb; pdb.set_trace()
-        doc = [format_xml_paragraph(self.object.find('briefdescription'),self.env.config.sphinx_build_mode)]
+        doc = [format_xml_paragraph(self.object.find('briefdescription'), self.env.config.sphinx_build_mode, verbosity=self.env.app.verbosity)]
         #detaileddescription = self.object.find('detaileddescription')
         #doc = [format_xml_paragraph(detaileddescription,self.env.config.sphinx_build_mode)]
 
         # add parameter documentation (in detaileddescription) for main function documentation
         if not self.brief:
-            doc += [format_xml_paragraph(self.object.find('detaileddescription'),self.env.config.sphinx_build_mode)]
+            doc += [format_xml_paragraph(self.object.find('detaileddescription'), self.env.config.sphinx_build_mode, verbosity=self.env.app.verbosity)]
 
             # add references/referencedby
             references = self.object.findall('references')
@@ -561,7 +561,7 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
 
     def format_signature(self):
         args = self.object.find('argsstring').text
-        print("[debug] DoxygenMethodDocumenter format_signature called (%s)" % (args))
+        if self.env.app.verbosity > 0: print("[debug] DoxygenMethodDocumenter format_signature called (%s)" % (args))
         return args
 
     def document_members(self, all_members=False):
@@ -609,7 +609,7 @@ class DoxygenTypeDocumenter(DoxygenDocumenter):
     #def get_doc(self, encoding):
     # encoding is depricated
     def get_doc(self):
-        desc = [format_xml_paragraph(self.object.find('briefdescription'),self.env.config.sphinx_build_mode)]
+        desc = [format_xml_paragraph(self.object.find('briefdescription'), self.env.config.sphinx_build_mode, verbosity=self.env.app.verbosity)]
 
         for member in self.object.findall('./sectiondef/memberdef'):
             attribs = flatten(member.find('type')).strip().split(', ')

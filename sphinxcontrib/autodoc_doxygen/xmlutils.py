@@ -30,7 +30,7 @@ def flatten(xmlnode):
 
     return t
 
-def format_xml_paragraph(xmlnode,build_mode):
+def format_xml_paragraph(xmlnode,build_mode,nsOrig=None,verbosity=0):
     """Format an Doxygen XML segment (principally a detaileddescription)
     as a paragraph for inclusion in the rst document
 
@@ -43,9 +43,22 @@ def format_xml_paragraph(xmlnode,build_mode):
     lines
         A list of lines.
     """
-    return [l.rstrip() for l in
-        _DoxygenXmlParagraphFormatter().generic_visit(xmlnode,build_mode=build_mode).lines]
-
+    # Here we are operating on the entire document for the template
+    # This helps support \footnotes{}
+    if nsOrig is not None:
+        xmlParagraphFormatter = _DoxygenXmlParagraphFormatter()
+        xmlParagraphFormatter.setNS(nsOrig)
+        xmlParagraphFormatter.setVerbosity(verbosity)
+        xmlParagraphFormatter.generic_visit(xmlnode,build_mode=build_mode)
+        xmlParagraphFormatter.ns['text'] = [l.rstrip() for l in xmlParagraphFormatter.lines]
+        return xmlParagraphFormatter.ns
+    else:
+        # Return processing for typically ns['text'] only
+        # Expand to allow setting of options
+        xmlParagraphFormatter = _DoxygenXmlParagraphFormatter()
+        xmlParagraphFormatter.setVerbosity(verbosity)
+        xmlParagraphFormatter.generic_visit(xmlnode,build_mode=build_mode)
+        return [l.rstrip() for l in xmlParagraphFormatter.lines]
 
 class _DoxygenXmlParagraphFormatter(object):
     # This class follows the model of the stdlib's ast.NodeVisitor for tree traversal
@@ -55,13 +68,22 @@ class _DoxygenXmlParagraphFormatter(object):
     # It's supposed to handle paragraphs, references, preformatted text (code blocks), and lists.
 
     def __init__(self):
+        self.ns = {}
         self.lines = ['']
         self.continue_line = False
         # We need to track specified math lables and place them prior to the ::math blocks
         self.math_labels = []
         self.build_mode = None
+        self.verbosity = 0
 
     # new
+    def setNS(self, ns):
+        self.ns = ns
+
+    def setVerbosity(self, verbosity):
+        self.verbosity = verbosity
+        if self.verbosity > 0: print("[debug] verbosity = %s" % (self.verbosity))
+
     def visit_latexonly(self, node):
         if not(self.build_mode in ('latexpdf','latex')):
             return
@@ -107,6 +129,25 @@ class _DoxygenXmlParagraphFormatter(object):
             else:
                 val = [' :math:numref:`%s`' % tag_string]
             self.lines[-1] += ''.join(val)
+            return
+
+        # This supports \footnotes{}
+        if text.find('title=') >= 0:
+            text = text.replace('\n',' ')
+            title_match = re.search('title="(.*)"', text)
+            if title_match:
+                title_string = title_match.groups()[0]
+                if 'footnotes' in self.ns:
+                    self.ns['footnotes'].append(title_string)
+                else:
+                    self.ns['footnotes'] = [title_string]
+
+                val = " [#]_"
+                self.lines[-1] += ''.join(val)
+                return
+
+        # undefined
+        if self.verbosity > 0: print("[debug] WARNING: Uncaptured htmlonly string (%s)" % text)
 
     # new
     # reStructured text only permits one label per math:: block
@@ -114,7 +155,7 @@ class _DoxygenXmlParagraphFormatter(object):
         if len(self.math_labels) == 0:
             return
 
-        print("[debug] inserting math labels")
+        if self.verbosity > 0: print("[debug] inserting math labels")
 
         math_block_idx = -1
         for idx in range(len(self.lines)-1,0,-1):
@@ -136,7 +177,7 @@ class _DoxygenXmlParagraphFormatter(object):
 
     def visit(self, node):
         method = 'visit_' + node.tag
-        print("[debug] method=%s" % (method))
+        if self.verbosity > 0: print("[debug] method=%s" % (method))
         if len(self.math_labels) > 0 and node.tag != 'formula':
           self.emit_math_labels()
         visitor = getattr(self, method, self.generic_visit)
@@ -144,7 +185,7 @@ class _DoxygenXmlParagraphFormatter(object):
 
     def generic_visit(self, node, build_mode=None):
         if build_mode:
-            print("[debug] Setting build mode: %s" % (build_mode))
+            if self.verbosity > 0: print("[debug] Setting build mode: %s" % (build_mode))
             self.build_mode = build_mode
         for child in node.getchildren():
             self.visit(child)
@@ -160,7 +201,7 @@ class _DoxygenXmlParagraphFormatter(object):
         real_name = None
         name_node = None
 
-        print("[debug] node.items():%s" % node.items())
+        if self.verbosity > 0: print("[debug] node.items():%s" % node.items())
         if node.get('kindref') == 'member':
             ref = get_doxygen_root().find('./compounddef/sectiondef/memberdef[@id="%s"]' % refid)
             # only set the kind if we find a function, otherwise it might be
@@ -176,7 +217,7 @@ class _DoxygenXmlParagraphFormatter(object):
                     kind = 'type'
         else:
             # we probably don't get here
-            print('[debug] warning: slow ref search!')
+            if self.verbosity > 0: print('[debug] warning: slow ref search!')
             ref = get_doxygen_root().find('.//*[@id="%s"]' % refid)
 
         # get name of target
@@ -191,7 +232,7 @@ class _DoxygenXmlParagraphFormatter(object):
             if name_node is not None:
                 real_name = name_node.text.split('::')[-1]
             else:
-                print("[debug] unimplemented link")
+                if self.verbosity > 0: print("[debug] unimplemented link")
                 self.lines[-1] += '(unimplemented link)' + node.text
                 return
         else:
@@ -202,7 +243,7 @@ class _DoxygenXmlParagraphFormatter(object):
             # section link, we hope!
             val = ['`']
         else:
-            print("[debug] :f:%s" % (kind))
+            if self.verbosity > 0: print("[debug] :f:%s" % (kind))
             val = [':f:%s:`' % kind]
 
         val.append(node.text)
@@ -215,7 +256,7 @@ class _DoxygenXmlParagraphFormatter(object):
             # convert into a proper link
             val.append('_')
 
-        print("[debug] kind(%s) real_name(%s) name_node(%s) val(%s)" %
+        if self.verbosity > 0: print("[debug] kind(%s) real_name(%s) name_node(%s) val(%s)" %
             (kind, real_name, name_node, val))
         self.lines[-1] += ''.join(val)
 
@@ -231,11 +272,11 @@ class _DoxygenXmlParagraphFormatter(object):
         #if refid == 'General_Coordinate':
         #  import pdb; pdb.set_trace()
         ref = get_doxygen_root().findall('.//*[@id="%s"]' % refid)
-        print("[debug] refid(%s) kindref(%s) kind(%s)" %
+        if self.verbosity > 0: print("[debug] refid(%s) kindref(%s) kind(%s)" %
             (refid, node.get('kindref'), node.get('kind')))
         if ref:
             ref = ref[0]
-            print("[debug] ref(%s)" % ref.items())
+            if self.verbosity > 0: print("[debug] ref(%s)" % ref.items())
             if ref.tag == 'memberdef':
                 parent = ref.xpath('./ancestor::compounddef/compoundname')[0].text
                 name = ref.find('./name').text
@@ -283,7 +324,7 @@ class _DoxygenXmlParagraphFormatter(object):
         if node.tail is not None:
             val.append(node.tail)
 
-        print("[debug] kind(%s) real_name(%s) node_name(%s)" %
+        if self.verbosity > 0: print("[debug] kind(%s) real_name(%s) node_name(%s)" %
             (kind, real_name, name_node))
         self.lines[-1] += ''.join(val)
 
@@ -360,7 +401,7 @@ class _DoxygenXmlParagraphFormatter(object):
         text = node.text.strip()
 
         # Remove the faked link for the html version
-        if self.build_mode == 'latexpdf':
+        if self.build_mode in ('latexpdf','latex'):
             label_match = re.search(' \\\\label{(html:.*?)}.*?\\\\\\\\', text)
             if label_match:
                 replace_string = label_match.group()

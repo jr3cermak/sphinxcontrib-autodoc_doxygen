@@ -37,8 +37,8 @@ def import_by_name(name, env=None, prefixes=None, i=0):
 
     # orig
     if env is not None:
-        if env.ref_context != None and env.ref_context != {}:
-            print("[debug] parents: %s" % env.ref_context)
+        #if env.ref_context != None and env.ref_context != {}:
+        #    print("[debug] parents: %s" % env.ref_context)
         parents = env.ref_context.get('cpp:parent_key')
         if parents is not None:
             parent_symbols = [p[0].get_display_string() for p in parents]
@@ -83,7 +83,7 @@ def _import_by_name(name, i=0):
 def _import_by_name_original(name, i=0):
     root = get_doxygen_root()
     name = name.replace('.', '::')
-    print("[debug] import: %s" % name)
+    #print("[debug] import: %s" % name)
 
     if '::' in name:
         # add query for sectiondef 'func'
@@ -133,10 +133,11 @@ def _import_by_name_original(name, i=0):
 
 def get_documenter(obj, full_name):
     if obj.tag == 'memberdef' and obj.get('kind') == 'function':
-        print("[debug] Calling DoxygenMethodDocumenter")
+        #print("[debug] Calling DoxygenMethodDocumenter")
         return DoxygenMethodDocumenter
     elif obj.tag == 'compounddef':
-        print("[debug] Calling DoxygenModuleDocumenter")
+        #import pdb; pdb.set_trace()
+        #print("[debug] Calling DoxygenModuleDocumenter")
         return DoxygenModuleDocumenter
     # if kind:func use DoxygenModuleDocumenter
     #if obj.tag == 'memberdef' and obj.get('kind') == 'func':
@@ -172,8 +173,12 @@ class DoxygenAutosummary(Autosummary):
             modules = get_doxygen_root().xpath('./compound[@kind="namespace"]')
             names = [m.find('name').text for m in modules]
 
-        names_and_counts = reduce(operator.add,
-            [tuple(zip(g, count())) for _, g in groupby(names)]) # type: List[(Str, Int)]
+        # TODO: silently fail when there are no fortran files provided?
+        try:
+            names_and_counts = reduce(operator.add,
+                [tuple(zip(g, count())) for _, g in groupby(names)]) # type: List[(Str, Int)]
+        except:
+            return items
 
         for name, i in names_and_counts:
             display_name = name
