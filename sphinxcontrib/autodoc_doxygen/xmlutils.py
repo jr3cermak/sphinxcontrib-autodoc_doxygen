@@ -75,6 +75,7 @@ class _DoxygenXmlParagraphFormatter(object):
         self.math_labels = []
         self.build_mode = None
         self.verbosity = 0
+        self.indent = -1
 
     # new
     def setNS(self, ns):
@@ -492,13 +493,35 @@ class _DoxygenXmlParagraphFormatter(object):
 
     # add end
 
-    def visit_listitem(self, node):
-        char = '*' if node.getparent().tag == 'itemizedlist' else '#'
+    # allows us to handle nested ordered lists
+    def visit_orderedlist(self, node):
+        self.indent = self.indent + 1
         self.lines.append('')
-        self.lines.append(char + ' ')
+        self.generic_visit(node)
+        self.indent = self.indent - 1
+
+    # allows us to handle nested itemized lists
+    def visit_itemizedlist(self, node):
+        self.indent = self.indent + 1
+        self.lines.append('')
+        self.generic_visit(node)
+        self.indent = self.indent - 1
+
+    # Source of citation and numbering
+    def visit_listitem(self, node):
+        #import pdb; pdb.set_trace()
+        #char = '*' if node.getparent().tag == 'itemizedlist' else '#.'
+        if node.getparent().tag == 'itemizedlist':
+            #self.lines.append('')
+            char = '*'
+        else:
+            char = '#.'
+        if self.verbosity > 0: print("[debug] listitem indent = %s" % (self.indent))
+        self.lines.append(' '*(self.indent*2) + char + ' ')
         # replaced
         #self.lines.append('   - ')
         self.continue_line = True
+        # recursion
         self.generic_visit(node)
 
     # add

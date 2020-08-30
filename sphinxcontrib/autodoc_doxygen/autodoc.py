@@ -205,8 +205,8 @@ class DoxygenModuleDocumenter(DoxygenDocumenter):
             doc.append(['<undocumented>', ''])
 
         if self.brief:
-            # new line to separate from further content
-            doc.append(['`More...`_', ''])
+            # More references need to be unique across all pages
+            doc.append(['`More... <DETA%s_>`_' % (self.name), ''])
 
         return doc
 
@@ -306,7 +306,9 @@ class DoxygenModuleDocumenter(DoxygenDocumenter):
         # we want a brief description of types/functions here
 
         # detailed description
-        self.add_line(u'.. _`More...`:', sourcename)
+        #self.add_line(u'.. _`More...`:', sourcename)
+        self.add_line('','')
+        self.add_line(u'.. _DETA%s:' % (self.name), '')
         self.add_title('Detailed Description', char='-')
         self.brief = False
         self.add_content(None)
