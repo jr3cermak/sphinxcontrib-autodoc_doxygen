@@ -76,7 +76,8 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
         #    continue
 
         #path = output_dir or os.path.abspath(path)
-        print("[debug] checking path: %s" % (path))
+        if builder.app.verbosity > 0:
+            print("[debug] checking path: %s" % (path))
         ensuredir(path)
 
         try:
@@ -105,7 +106,8 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
                 # change
                 raise NotImplementedError('No template for %s (%s %s)' % (obj.items(), obj.tag, obj.get('kind')))
 
-        print("[debug] template:%s kind: %s obj.items():%s" % (template_name, obj.get('kind'), obj.items()))
+        if builder.app.verbosity > 0:
+            print("[debug] template:%s kind: %s obj.items():%s" % (template_name, obj.get('kind'), obj.items()))
         with open(fn, 'w') as f:
             # debug
             #import pdb; pdb.set_trace()
@@ -121,7 +123,8 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
                 ns['types'] = [e.text for e in obj.findall('./innerclass') if is_type(e)]
                 ns['objtype'] = 'namespace'
             elif obj.tag == 'compounddef' and obj.get('kind') == 'page':
-                print("[debug] xml parsing for %s" % (obj.get('id')))
+                if builder.app.verbosity > 0:
+                    print("[debug] xml parsing for %s" % (obj.get('id')))
                 ns['title'] = obj.find('title').text
                 #ns['text'] = format_xml_paragraph(obj.find('detaileddescription'),build_mode)
                 ns = format_xml_paragraph(obj.find('detaileddescription'), build_mode, nsOrig=ns, verbosity=builder.app.verbosity)
