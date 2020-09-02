@@ -403,6 +403,7 @@ class _DoxygenXmlParagraphFormatter(object):
         #    else:
         #        self.lines.append(node.text)
         #self.generic_visit(node)
+
         self.lines.append('')
         self.continue_line = False
 

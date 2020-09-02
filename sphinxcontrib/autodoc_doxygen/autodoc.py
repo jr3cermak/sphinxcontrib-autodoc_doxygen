@@ -205,7 +205,7 @@ class DoxygenModuleDocumenter(DoxygenDocumenter):
             if not len(description) and not description.text.strip():
                 description = self.object.find('briefdescription')
 
-        if self.env.app.verbosity > 0: print("[debug] get_doc(%s)(%s)" % (self.brief, description.items()))
+        #if self.env.app.verbosity > 0: print("[debug] get_doc(%s)(%s)" % (self.brief, description.items()))
         doc = [format_xml_paragraph(description, self.env.config.sphinx_build_mode,
             verbosity=self.env.app.verbosity)]
 
@@ -297,10 +297,12 @@ class DoxygenModuleDocumenter(DoxygenDocumenter):
             return
 
         sourcename = self.get_sourcename()
-        if self.env.app.verbosity > 0: print("[debug] add_title:%s" % (sourcename))
 
         # add title
         title = '%s module reference' % self.format_name()
+        if self.env.app.verbosity > 0:
+            #import pdb; pdb.set_trace()
+            print("[debug] add_title:%s" % (title))
         self.add_title(title, char='=')
 
         # module directive
@@ -329,6 +331,12 @@ class DoxygenModuleDocumenter(DoxygenDocumenter):
         if 'methods' in self.options:
             self.add_title('Function/Subroutine Documentation', char='-')
             self.document_members('func', all_members)
+
+        if self.env.app.verbosity > 0:
+            if self.real_modname == 'mom_eos':
+                # Result: self.directive.result.data
+                #import pdb; pdb.set_trace()
+                pass
 
 class DoxygenClassDocumenter(DoxygenDocumenter):
     objtype = 'doxyclass'
@@ -428,6 +436,12 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
         """Add the directive header and options to the generated content."""
         domain = self.domain
         # use the <type> field, without other information (e.g. public)
+        # functions are badly formed out of this function
+        if self.env.app.verbosity > 0:
+            print("[debug] add_directive_header sig(%s)" % (sig))
+            if sig is not None and sig.find('adv_dyn') >= 0:
+                #import pdb; pdb.set_trace()
+                pass
         name = self.format_name()
         sourcename = self.get_sourcename()
 
@@ -440,7 +454,7 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
 
         if self.env.app.verbosity > 0:
             print("[debug] DoxygenMethodDocumenter directive(%s) name(%s)" % (directive,name))
-            if name.find('eos_domain') >= 0 or name.find('ale_main') >= 0:
+            if name.find('eos_domain') >= 0 or name.find('mom_state_is') >= 0:
                 #import pdb; pdb.set_trace()
                 pass
 
@@ -591,7 +605,11 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
 
     def format_signature(self):
         args = self.object.find('argsstring').text
-        if self.env.app.verbosity > 0: print("[debug] DoxygenMethodDocumenter format_signature called (%s)" % (args))
+        if self.env.app.verbosity > 0:
+            print("[debug] DoxygenMethodDocumenter format_signature called (%s)" % (args))
+            if args is not None and args.find('adv_dyn')>=0:
+                #import pdb; pdb.set_trace()
+                pass
         return args
 
     def document_members(self, all_members=False):

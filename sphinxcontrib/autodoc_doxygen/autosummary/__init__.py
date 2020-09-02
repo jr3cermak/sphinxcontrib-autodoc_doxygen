@@ -133,10 +133,10 @@ def _import_by_name_original(name, i=0):
 
 def get_documenter(obj, full_name):
     if obj.tag == 'memberdef' and obj.get('kind') == 'function':
+        #import pdb; pdb.set_trace()
         #print("[debug] Calling DoxygenMethodDocumenter")
         return DoxygenMethodDocumenter
     elif obj.tag == 'compounddef':
-        #import pdb; pdb.set_trace()
         #print("[debug] Calling DoxygenModuleDocumenter")
         return DoxygenModuleDocumenter
     # if kind:func use DoxygenModuleDocumenter
@@ -277,13 +277,12 @@ class DoxygenAutosummary(Autosummary):
         """
         table, table_spec, append_row = self.get_tablespec()
         for name, sig, summary, real_name in items:
-            # debug
-            #import pdb; pdb.set_trace()
             # required for cpp autolink
             # original
             #qualifier = 'cpp:any'
             #full_name = real_name.replace('.', '::')
-            qualifier = 'f:' + self.options['kind']
+            kind = self.options['kind']
+            qualifier = 'f:' + kind
             # modified
             #col1 = ':%s:`%s <%s>`' % (qualifier, name, full_name)
             col1 = ':%s:`%s`' % (qualifier, name)
@@ -296,6 +295,8 @@ class DoxygenAutosummary(Autosummary):
         #self.result.append('   .. rubric: sdsf', 0)
         # removed
         #self.bridge.result.append('   .. rubric: sdsf', 0)
+        # debug
+        #import pdb; pdb.set_trace()
         return [table_spec, table]
 
 
