@@ -310,7 +310,7 @@ class _DoxygenXmlParagraphFormatter(object):
                     raise NotImplementedError(ref.tag)
             else:
                 print('[error] Unimplemented tag: %s' % (ref.tag))
-                import pdb; pdb.set_trace()
+                #import pdb; pdb.set_trace()
                 raise NotImplementedError(ref.tag)
         else:
             real_name = None
@@ -321,9 +321,9 @@ class _DoxygenXmlParagraphFormatter(object):
             #import pdb; pdb.set_trace()
             code_type = 'f'
             # for now treat these as text
-            val = ['``%s``' % node.text]
-            self.lines[-1] += ''.join(val)
-            return
+            #val = ['``%s``' % node.text]
+            #self.lines[-1] += ''.join(val)
+            #return
 
         #import pdb; pdb.set_trace()
         val = [':%s:any:`' % code_type, node.text]

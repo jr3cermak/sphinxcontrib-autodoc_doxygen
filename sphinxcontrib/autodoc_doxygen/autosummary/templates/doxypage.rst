@@ -5,7 +5,7 @@ without this, we get undefined reference.  This needs to be fixed later.
 #}
 
 {{ underline }}
-{{ name }}
+{{ title }}
 {{ underline }}
 
 {% for line in text %}

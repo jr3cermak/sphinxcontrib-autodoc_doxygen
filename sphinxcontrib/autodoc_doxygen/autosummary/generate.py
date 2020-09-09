@@ -126,6 +126,7 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
                 if builder.app.verbosity > 0:
                     print("[debug] xml parsing for %s" % (obj.get('id')))
                 ns['title'] = obj.find('title').text
+                ns['underline'] = len(ns['title']) * '='
                 #ns['text'] = format_xml_paragraph(obj.find('detaileddescription'),build_mode)
                 ns = format_xml_paragraph(obj.find('detaileddescription'), build_mode, nsOrig=ns, verbosity=builder.app.verbosity)
                 #if obj.get('id') == 'Specifics':
@@ -140,7 +141,8 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
             ns['module'] = mod_name
             ns['objname'] = obj_name
             ns['name'] = parts[-1]
-            ns['underline'] = len(name) * '='
+            if not('underline' in ns):
+                ns['underline'] = len(name) * '='
 
             rendered = template.render(**ns)
             f.write(rendered)
