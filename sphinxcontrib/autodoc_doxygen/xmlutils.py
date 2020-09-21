@@ -138,6 +138,15 @@ class _DoxygenXmlParagraphFormatter(object):
             title_match = re.search('title="(.*)"', text)
             if title_match:
                 title_string = title_match.groups()[0]
+                # Recover \cite that have been converted to @cite to :cite:`%s`
+                if title_string.find('@cite') >= 0:
+                    citeCommand = '@cite ([\w\-\_]+)'
+                    m = re.search(citeCommand, title_string)
+                    while m:
+                        replStr = title_string[m.start():m.end()]
+                        newStr = ':cite:`%s`' % (m.groups()[0])
+                        title_string = title_string.replace(replStr, newStr)
+                        m = re.search(citeCommand, title_string)
                 if 'footnotes' in self.ns:
                     self.ns['footnotes'].append(title_string)
                 else:
@@ -176,6 +185,16 @@ class _DoxygenXmlParagraphFormatter(object):
         #import pdb; pdb.set_trace()
         self.math_labels = []
 
+    # Add appropriate implicit labels from anchors
+    def visit_anchor(self, node):
+        if self.verbosity > 0:
+            print("[debug] anchor id(%s)" % (node.get('id')))
+        #import pdb; pdb.set_trace()
+        implicitLink = '.. _%s:' % (node.get('id'))
+        self.lines.append(implicitLink)
+        self.lines.append('')
+
+    # Original
     def visit(self, node):
         method = 'visit_' + node.tag
         if self.verbosity > 0: print("[debug] method=%s" % (method))
@@ -292,17 +311,27 @@ class _DoxygenXmlParagraphFormatter(object):
                     return
                 name_node = ref.find('./name')
                 real_name = name_node.text if name_node is not None else ''
-            elif ref.tag in ('anchor','sect1','sect2'):
+            elif ref.tag in ('anchor','sect1','sect2','sect3','sect4'):
                 # If _1CITEREF_ this is a doxygen processed citation
                 if refid.find('_1CITEREF_') >= 0:
                     citation = refid[18:]
                     val = [':cite:`%s`' % (citation)]
                     self.lines[-1] += ''.join(val)
                     return
+                # Capture sectional links
+                #import pdb; pdb.set_trace()
+
                 # Treat the rest of these as general links
                 if refid.find('_1') >= 0:
-                    val = [':ref:`%s`' % refid]
-                    #val = ['`%s`_' % refid]
+                    reftext = node.text
+                    reftext = reftext.strip()
+                    refid2 = refid[refid.find('_1')+2:]
+                    if reftext != '' and reftext != refid2:
+                        if self.verbosity > 0: print("[debug] refid2(%s) reftext(%s)" % (refid2,reftext))
+                        val = [':ref:`%s<%s>`' % (reftext,refid)]
+                    else:
+                        if self.verbosity > 0: print("[debug] refid(%s)" % (refid))
+                        val = [':ref:`%s`' % refid]
                     self.lines[-1] += ''.join(val)
                     return
                 else:
@@ -361,6 +390,7 @@ class _DoxygenXmlParagraphFormatter(object):
 
     # add visit_image
     def visit_image(self, node):
+        # This if seems a bit arbitrary
         if len(node.text.strip()):
             type = 'figure'
         else:
@@ -369,7 +399,18 @@ class _DoxygenXmlParagraphFormatter(object):
         self.lines.append('.. %s:: /images/%s' % (type, node.get('name')))
 
         if type == 'figure':
-            self.lines.extend(['', node.text])
+            caption = node.text
+            # Detect simple math commands and replace them with sphinx :math: directives
+            mathCommand = '\\\\f\$(.*?)\\\\f\$'
+            m = re.search(mathCommand, caption)
+            while m:
+                #import pdb; pdb.set_trace()
+                replStr = caption[m.start():m.end()]
+                newStr = ':math:`%s`' % (m.groups()[0])
+                caption = caption.replace(replStr, newStr)
+                m = re.search(mathCommand, caption)
+
+            self.lines.extend(['', "   %s" % (caption)])
 
     # add visit_superscript
     def visit_superscript(self, node):
@@ -411,7 +452,7 @@ class _DoxygenXmlParagraphFormatter(object):
     def visit_formula(self, node):
         text = node.text.strip()
 
-        # Remove the faked link for the html version
+        # Remove the faked link for pdf version
         if self.build_mode in ('latexpdf','latex'):
             label_match = re.search(' \\\\label{(html:.*?)}.*?\\\\\\\\', text)
             if label_match:
@@ -484,7 +525,9 @@ class _DoxygenXmlParagraphFormatter(object):
         if title_node is not None:
             title = title_node.text
             # Filter html data (possibly if we see a <, / and >)
-            #print("[debug] title(%s)" % (title))
+            if self.verbosity > 0:
+                print("[debug] visit_sect id(%s) title(%s)" % (node.get('id'),title))
+                #import pdb; pdb.set_trace()
             if title.find('<') >=0 and title.find('>') >=0 and title.find('/') >=0:
                 html_match = False
                 # Filter <tt> => ``
@@ -494,6 +537,10 @@ class _DoxygenXmlParagraphFormatter(object):
                     html_match = True
                 if not(html_match) and self.verbosity > 0:
                     print("[debug] unmatched html (%s)" % (title))
+            # Add a implicit lable for the sections
+            implicitLink = '.. _%s:' % (node.get('id'))
+            self.lines.append(implicitLink)
+            self.lines.append('')
             self.lines.append(title)
             self.lines.append(len(title) * char)
             self.lines.append('')

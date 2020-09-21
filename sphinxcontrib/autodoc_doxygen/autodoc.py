@@ -209,6 +209,10 @@ class DoxygenModuleDocumenter(DoxygenDocumenter):
         doc = [format_xml_paragraph(description, self.env.config.sphinx_build_mode,
             verbosity=self.env.app.verbosity)]
 
+        #if self.env.app.verbosity > 0:
+        #    if self.name == 'mom_ice_shelf':
+        #        import pdb; pdb.set_trace()
+
         if not any(len(d.strip()) for d in doc[0]):
             doc.append(['<undocumented>', ''])
 
