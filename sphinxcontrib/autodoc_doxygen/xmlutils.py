@@ -205,7 +205,7 @@ class _DoxygenXmlParagraphFormatter(object):
 
     def generic_visit(self, node, build_mode=None):
         if build_mode:
-            if self.verbosity > 0: print("[debug] Setting build mode: %s" % (build_mode))
+            if self.verbosity > 2: print("[debug] Setting build mode: %s" % (build_mode))
             self.build_mode = build_mode
         for child in node.getchildren():
             self.visit(child)
@@ -355,9 +355,12 @@ class _DoxygenXmlParagraphFormatter(object):
             #return
 
         #import pdb; pdb.set_trace()
-        val = [':%s:any:`' % code_type, node.text]
+        if code_type == 'f':
+            val = [':%s:func:`%s' % (code_type, node.text)]
+        else:
+            val = [':%s:any:`' % code_type, node.text]
         if real_name:
-            val.extend((' <', real_name, '>`'))
+            val.extend((' <%s>`' % (real_name)))
         else:
             val.append('`')
         if node.tail is not None:
@@ -390,6 +393,17 @@ class _DoxygenXmlParagraphFormatter(object):
 
     # add visit_image
     def visit_image(self, node):
+
+        # Filter activity based on build type and type of image
+        image_type = node.get('type')
+        if image_type == 'html' and self.build_mode != 'html':
+            return
+        if image_type == 'latex' and not(self.build_mode in ('latexpdf','latex')):
+            return
+
+        if self.verbosity > 0:
+            print("[debug] image type(%s) mode(%s)" % (image_type, self.build_mode))
+
         # This if seems a bit arbitrary
         if len(node.text.strip()):
             type = 'figure'
@@ -511,12 +525,27 @@ class _DoxygenXmlParagraphFormatter(object):
     # a specified return argument.  For now, we leave as
     # :returns undefined:
     # marker so we can fix up the document using flint.
+    # Supports doxygen /sa or /see command
     def visit_simplesect(self, node):
+        if self.verbosity > 0:
+            print("[debug] simplesect kind(%s)" % (node.get('kind')))
+
+        # Do nothing for \note for now
+
+        # fortran function handling
         if node.get('kind') == 'return':
             self.lines.append(':returns undefined: ')
             self.continue_line = True
-        self.generic_visit(node)
+            self.generic_visit(node)
 
+        # Add a section 4 here for \see, \sa
+        if node.get('kind') in ('see', 'sa'):
+            see_also_label = "See also"
+            self.lines.append('')
+            self.lines.append('**%s**' % (see_also_label))
+            self.lines.append('')
+            self.lines.append('')
+            self.generic_visit(node)
     # add
 
     def visit_sect(self, node, char):
