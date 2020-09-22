@@ -538,7 +538,7 @@ class _DoxygenXmlParagraphFormatter(object):
             self.continue_line = True
             self.generic_visit(node)
 
-        # Add a section 4 here for \see, \sa
+        # Add bold text psudo section for \see, \sa roughly acts like doxygen
         if node.get('kind') in ('see', 'sa'):
             see_also_label = "See also"
             self.lines.append('')
