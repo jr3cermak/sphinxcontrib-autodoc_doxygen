@@ -284,25 +284,26 @@ class _DoxygenXmlParagraphFormatter(object):
     def visit_ref(self, node):
     #def visit_ref_modified(self, node):
         refid = node.get('refid')
-        kind = None
         name_node = None
         ream_name = None
+        kind = None
 
         # debug
         #if refid == 'General_Coordinate':
         #  import pdb; pdb.set_trace()
         ref = get_doxygen_root().findall('.//*[@id="%s"]' % refid)
-        if self.verbosity > 0: print("[debug] refid(%s) kindref(%s) kind(%s)" %
-            (refid, node.get('kindref'), node.get('kind')))
+        if self.verbosity > 0: print("[debug] refid(%s) kindref(%s)" %
+            (refid, node.get('kindref')))
         if ref:
             ref = ref[0]
+            kind = ref.get('kind')
             if self.verbosity > 0: print("[debug] ref(%s)" % ref.items())
             if ref.tag == 'memberdef':
                 parent = ref.xpath('./ancestor::compounddef/compoundname')[0].text
                 name = ref.find('./name').text
                 real_name = parent + '::' + name
             elif ref.tag in ('compounddef', 'enumvalue'):
-                if ref.get('kind') == 'page':
+                if kind == 'page':
                     # :ref: works, but requires an explicit tag placed at the top of pages
                     # that generates an INFO message.  FIX LATER.
                     val = [':ref:`%s`' % ref.get('id')]
@@ -344,16 +345,17 @@ class _DoxygenXmlParagraphFormatter(object):
         else:
             real_name = None
 
-        #debug
-        code_type = 'cpp'
-        if node.text.find('.F90'):
+        # if kind='file' treat as file references
+        if kind == 'file':
             #import pdb; pdb.set_trace()
-            code_type = 'f'
             # for now treat these as text
-            #val = ['``%s``' % node.text]
-            #self.lines[-1] += ''.join(val)
-            #return
+            # TODO: references to code
+            val = ['``%s``' % node.text]
+            self.lines[-1] += ''.join(val)
+            return
 
+        #debug
+        code_type = 'f'
         #import pdb; pdb.set_trace()
         if code_type == 'f':
             val = [':%s:func:`%s' % (code_type, node.text)]
