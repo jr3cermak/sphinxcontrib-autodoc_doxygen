@@ -156,8 +156,19 @@ class _DoxygenXmlParagraphFormatter(object):
                 self.lines[-1] += ''.join(val)
                 return
 
+        # Check for \eqref{ replace with :ref:`tag`_
+        # Post processing of equations will place a link into the HTML
+        eqref_match = re.search('\\\eqref{(.*?)}', text)
+        if eqref_match is not None:
+            tag_string = eqref_match.groups()[0]
+            val = [' :math:numref:`%s`' % tag_string]
+            self.lines[-1] += ''.join(val)
+            return
+            #import pdb; pdb.set_trace()
+
         # undefined
-        if self.verbosity > 0: print("[debug] WARNING: Uncaptured htmlonly string (%s)" % text)
+        if self.verbosity > 0:
+            print("[debug] WARNING: Uncaptured htmlonly string (%s)" % text)
 
     # new
     # reStructured text only permits one label per math:: block
@@ -501,9 +512,15 @@ class _DoxygenXmlParagraphFormatter(object):
 
         # detect \label{html:tag} blocks
         if text.find('\\label') >= 0:
+            # If we have a big block of equations, supply one label
             label_matches = re.findall('\\\label{html:(.*?)} ',text)
             if len(label_matches) > 0:
                 [self.math_labels.append(i) for i in label_matches]
+            else:
+                label_matches = re.findall('\\\label{(.*?)} ',text)
+                #import pdb; pdb.set_trace()
+                if len(label_matches) > 0:
+                    [self.math_labels.append(i) for i in label_matches]
 
     def visit_parametername(self, node):
         if 'direction' in node.attrib:
