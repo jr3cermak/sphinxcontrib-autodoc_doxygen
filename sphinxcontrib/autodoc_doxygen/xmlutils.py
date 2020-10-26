@@ -417,6 +417,7 @@ class _DoxygenXmlParagraphFormatter(object):
         if self.verbosity > 0:
             print("[debug] image type(%s) mode(%s)" % (image_type, self.build_mode))
 
+        #import pdb; pdb.set_trace()
         # This if seems a bit arbitrary
         if len(node.text.strip()):
             type = 'figure'
