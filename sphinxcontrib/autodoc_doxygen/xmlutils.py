@@ -106,7 +106,7 @@ class _DoxygenXmlParagraphFormatter(object):
         if ref_match is not None:
             tag_string = ref_match.groups()[0]
             #val = [' :ref:`%s`' % tag_string]
-            val = [' :latex:`%s`' % text.strip()]
+            val = [' :latex:`%s` ' % text.strip()]
             self.lines[-1] += ''.join(val)
 
         return
@@ -303,8 +303,8 @@ class _DoxygenXmlParagraphFormatter(object):
         #if refid == 'General_Coordinate':
         #  import pdb; pdb.set_trace()
         ref = get_doxygen_root().findall('.//*[@id="%s"]' % refid)
-        if self.verbosity > 0: print("[debug] refid(%s) kindref(%s)" %
-            (refid, node.get('kindref')))
+        if self.verbosity > 0: print("[debug] refid(%s) kindref(%s) ref(%s)" %
+            (refid, node.get('kindref'), ref))
         if ref:
             ref = ref[0]
             kind = ref.get('kind')
@@ -317,7 +317,7 @@ class _DoxygenXmlParagraphFormatter(object):
                 if kind == 'page':
                     # :ref: works, but requires an explicit tag placed at the top of pages
                     # that generates an INFO message.  FIX LATER.
-                    val = [':ref:`%s`' % ref.get('id')]
+                    val = [':ref:`%s` ' % ref.get('id')]
                     #val = ['`%s`_' % refid]
                     self.lines[-1] += ''.join(val)
                     return
@@ -340,10 +340,10 @@ class _DoxygenXmlParagraphFormatter(object):
                     refid2 = refid[refid.find('_1')+2:]
                     if reftext != '' and reftext != refid2:
                         if self.verbosity > 0: print("[debug] refid2(%s) reftext(%s)" % (refid2,reftext))
-                        val = [':ref:`%s<%s>`' % (reftext,refid)]
+                        val = [':ref:`%s<%s>` ' % (reftext,refid)]
                     else:
                         if self.verbosity > 0: print("[debug] refid(%s)" % (refid))
-                        val = [':ref:`%s`' % refid]
+                        val = [':ref:`%s` ' % refid]
                     self.lines[-1] += ''.join(val)
                     return
                 else:
@@ -356,12 +356,20 @@ class _DoxygenXmlParagraphFormatter(object):
         else:
             real_name = None
 
+
+        # Older doxygen support 1.8.13 for citation references
+        if node.get('kindref') == 'member' and refid.find('_1CITEREF_') >= 0:
+            citation = refid[18:]
+            val = [':cite:`%s` ' % (citation)]
+            self.lines[-1] += ''.join(val)
+            return
+
         # if kind='file' treat as file references
         if kind == 'file':
             #import pdb; pdb.set_trace()
             # for now treat these as text
             # TODO: references to code
-            val = ['``%s``' % node.text]
+            val = ['``%s`` ' % node.text]
             self.lines[-1] += ''.join(val)
             return
 
@@ -389,7 +397,7 @@ class _DoxygenXmlParagraphFormatter(object):
 
     # add visit_emphasis
     def visit_emphasis(self, node):
-        self.para_text('*%s*' % node.text)
+        self.para_text('*%s* ' % node.text)
 
     # add role_text
     def role_text(self, node, role):
@@ -438,7 +446,9 @@ class _DoxygenXmlParagraphFormatter(object):
                 caption = caption.replace(replStr, newStr)
                 m = re.search(mathCommand, caption)
 
-            self.lines.extend(['', "   %s" % (caption)])
+            if self.verbosity > 0:
+                print("[debug] caption text(%s)" % (caption))
+            self.lines.extend(['', "   %s" % (caption), '', ''])
 
     # add visit_superscript
     def visit_superscript(self, node):
@@ -462,7 +472,8 @@ class _DoxygenXmlParagraphFormatter(object):
         # visit children and append tail
         for child in node.getchildren():
             self.visit(child)
-            self.para_text(child.tail)
+            if child.tail is not None:
+                self.para_text(child.tail.lstrip())
             self.continue_line = True
 
         # replaced
@@ -503,7 +514,7 @@ class _DoxygenXmlParagraphFormatter(object):
             self.lines.append('')
             self.continue_line = False
         else:
-            inline = ':math:`' + node.text.strip()[1:-1].strip() + '`'
+            inline = ':math:`' + node.text.strip()[1:-1].strip() + '` '
             if self.continue_line:
                 self.lines[-1] += inline
             else:
@@ -582,7 +593,7 @@ class _DoxygenXmlParagraphFormatter(object):
                 # Filter <tt> => ``
                 if title.find("<tt>") >= 0:
                     title = title.replace('<tt>','``')
-                    title = title.replace('</tt>','``')
+                    title = title.replace('</tt>','`` ')
                     html_match = True
                 if not(html_match) and self.verbosity > 0:
                     print("[debug] unmatched html (%s)" % (title))
@@ -679,7 +690,7 @@ class _DoxygenXmlParagraphFormatter(object):
         # add
         # I don't think we can put links inside
         # computeroutput text...
-        self.lines[-1] += '``' + flatten(node) + '``'
+        self.lines[-1] += '``' + flatten(node) + '`` '
         # omitted
         #return self.visit_preformatted(node)
 
