@@ -112,6 +112,8 @@ class _DoxygenXmlParagraphFormatter(object):
         return
 
     # new
+    # Newer versions of doxygen utilize <htmlonly> tag in XML
+    # Doxygen 1.8.13 leaves all this in <para> see: para_eqref
     def visit_htmlonly(self, node):
         if self.build_mode != 'html':
             return
@@ -121,7 +123,7 @@ class _DoxygenXmlParagraphFormatter(object):
             return
 
         # Check for \eqref2{tag,txt} and convert to :ref:`tag`_
-        eqref_match = re.search('\\\eqref2{(.*?)}', text)
+        eqref_match = re.search('\\\\eqref2{(.*?)}', text)
         if eqref_match is not None:
             tag_string = eqref_match.groups()[0]
             if tag_string.find(',') >= 0:
@@ -158,7 +160,7 @@ class _DoxygenXmlParagraphFormatter(object):
 
         # Check for \eqref{ replace with :ref:`tag`_
         # Post processing of equations will place a link into the HTML
-        eqref_match = re.search('\\\eqref{(.*?)}', text)
+        eqref_match = re.search('\\\\eqref{(.*?)}', text)
         if eqref_match is not None:
             tag_string = eqref_match.groups()[0]
             val = [' :math:numref:`%s`' % tag_string]
@@ -434,8 +436,11 @@ class _DoxygenXmlParagraphFormatter(object):
 
         self.lines.append('.. %s:: /images/%s' % (type, node.get('name')))
 
-        if type == 'figure':
+        if type in 'figure':
+            # NOTE: Escaped math equations do not play nicely with "literal strings" in python!
+
             caption = node.text
+
             # Detect simple math commands and replace them with sphinx :math: directives
             mathCommand = '\\\\f\$(.*?)\\\\f\$'
             m = re.search(mathCommand, caption)
@@ -446,7 +451,30 @@ class _DoxygenXmlParagraphFormatter(object):
                 caption = caption.replace(replStr, newStr)
                 m = re.search(mathCommand, caption)
 
+            # Only html needs to be double escaped
+            if image_type == 'html':
+                caption = node.text.replace('\\','\\\\')
+
+            #if caption.find('Phi') >= 0:
+            #    import pdb; pdb.set_trace()
+
+            # Search for $[math]$ and convert to \([math]\) for html
+            # Use :math: for latex
+            mathCommand = '\$(.*?)\$'
+            m = re.search(mathCommand, caption)
+            while m:
+                #import pdb; pdb.set_trace()
+                replStr = caption[m.start():m.end()]
+                if image_type == 'html':
+                    newStr = '\\\\(%s\\\\)' % (m.groups()[0])
+                else:
+                    newStr = ':math:`%s`' % (m.groups()[0])
+                caption = caption.replace(replStr, newStr)
+                m = re.search(mathCommand, caption)
+
             if self.verbosity > 0:
+                # For math we have to double the number of escapes so we pass an
+                # escape from RST to HTML.
                 print("[debug] caption text(%s)" % (caption))
             self.lines.extend(['', "   %s" % (caption), '', ''])
 
@@ -458,9 +486,86 @@ class _DoxygenXmlParagraphFormatter(object):
     def visit_subscript(self, node):
         self.role_text(node, 'subscript')
 
+    # add visit_sup
+    # Support for doxygen 1.8.13 as it passes everything to <para>
+    # Support for doxygen \footnote{}
+    def visit_sup(self, node):
+        title_string = node.get('title')
+        if title_string:
+            citeCommand = '@cite ([\w\-\_]+)'
+            m = re.search(citeCommand, title_string)
+            while m:
+                replStr = title_string[m.start():m.end()]
+                newStr = ':cite:`%s`' % (m.groups()[0])
+                title_string = title_string.replace(replStr, newStr)
+                m = re.search(citeCommand, title_string)
+
+            if 'footnotes' in self.ns:
+                self.ns['footnotes'].append(title_string)
+            else:
+                self.ns['footnotes'] = [title_string]
+
+            val = " [#]_ "
+            self.lines[-1] += ''.join(val)
+            #import pdb; pdb.set_trace()
+
+    # add replace any references of \eqref, \eqref2, \eqref4
+    # Doxygen 1.8.13
+    # html: use eqref2; remove eqref4
+    # latex: use eqref4; remove eqref2
+    # with appropriate replacements
+    def para_eqref(self, text):
+
+        chg = True
+        while text.find('\\\\eqref2') >= 0 and chg:
+            chg = False
+            m = re.search('\\\\eqref2{(.*?)}', text)
+            if m:
+                ref = m.groups()[0]
+                fullRef = '\\\\eqref2{%s}' % (ref)
+                if ref.find(',') >= 0:
+                    i = ref.find(',')
+                    sphinxRef = ':math:numref:`%s` - %s' % (ref[0:i],ref[i+1:])
+                    if self.build_mode in ('latexpdf','latex'):
+                        sphinxRef = ''
+                    text = text.replace(fullRef, sphinxRef)
+                    chg = True
+                #import pdb; pdb.set_trace()
+
+        chg = True
+        while text.find('\\\\eqref') >= 0 and chg:
+            chg = False
+            m = re.search('\\\\eqref{(.*?)}', text)
+            if m:
+                ref = m.groups()[0]
+                fullRef = '\\\\eqref{%s}' % (ref)
+                sphinxRef = ':math:numref:`%s`' % (ref)
+                text = text.replace(fullRef, sphinxRef)
+                chg = True
+            #import pdb; pdb.set_trace()
+
+        chg = True
+        while text.find('\\\\eqref4') >= 0 and chg:
+            chg = False
+            m = re.search('\\\\eqref4{(.*?)}', text)
+            if m:
+                ref = m.groups()[0]
+                fullRef = '\\\\eqref4{%s}' % (ref)
+                sphinxRef = ':latex:`\\ref{%s}`' % (ref)
+                if self.build_mode in ('html'):
+                    sphinxRef = ''
+                text = text.replace(fullRef, sphinxRef)
+                chg = True
+            #import pdb; pdb.set_trace()
+
+        return text
+
     # add para_text parser
+    # Doxygen 1.8.13 support for \eqref \eqref2
     def para_text(self, text):
         if text is not None:
+            if text.find('eqref') >= 0:
+                text = self.para_eqref(text)
             if self.continue_line:
                 self.lines[-1] += text
             else:
@@ -525,14 +630,19 @@ class _DoxygenXmlParagraphFormatter(object):
         # detect \label{html:tag} blocks
         if text.find('\\label') >= 0:
             # If we have a big block of equations, supply one label
-            label_matches = re.findall('\\\label{html:(.*?)} ',text)
+            label_matches = re.findall('\\\label{html:(.*?)?}',text)
+            #import pdb; pdb.set_trace()
             if len(label_matches) > 0:
                 [self.math_labels.append(i) for i in label_matches]
             else:
-                label_matches = re.findall('\\\label{(.*?)} ',text)
+                label_matches = re.findall('\\\label{(.*?)?}',text)
                 #import pdb; pdb.set_trace()
                 if len(label_matches) > 0:
                     [self.math_labels.append(i) for i in label_matches]
+                    if self.verbosity > 0:
+                        # For math we have to double the number of escapes so we pass an
+                        # escape from RST to HTML.
+                        print("[debug] math_labels(%s)" % (label_matches))
 
     def visit_parametername(self, node):
         if 'direction' in node.attrib:
@@ -547,7 +657,7 @@ class _DoxygenXmlParagraphFormatter(object):
         self.continue_line = True
 
     def visit_parameterlist(self, node):
-        lines = [l for l in type(self)().generic_visit(node).lines if l is not '']
+        lines = [l for l in type(self)().generic_visit(node).lines if l != '']
         # replaced
         #self.lines.extend([':parameters:', ''] + ['* %s' % l for l in lines] + [''])
         self.lines.extend([''] + lines + [''])
