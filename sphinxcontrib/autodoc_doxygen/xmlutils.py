@@ -71,11 +71,12 @@ class _DoxygenXmlParagraphFormatter(object):
         self.ns = {}
         self.lines = ['']
         self.continue_line = False
-        # We need to track specified math lables and place them prior to the ::math blocks
+        # We need to track specified math labels and place them prior to the ".. math::" blocks
         self.math_labels = []
         self.build_mode = None
         self.verbosity = 0
         self.indent = -1
+        self.options = []
 
     # new
     def setNS(self, ns):
@@ -89,25 +90,29 @@ class _DoxygenXmlParagraphFormatter(object):
         if not(self.build_mode in ('latexpdf','latex')):
             return
 
-        # debug
-        #import pdb; pdb.set_trace()
-
-        # Just pass text through at this point
-        #self.lines.append(node.text)
-
-        # Convert \\ref{tag} to :ref:` ` and the sphinx latex processor
-        # converts it to a proper label reference.
         text = node.text
         if text == None:
             return
 
+        # Convert \\ref{tag} to :ref:` ` and the sphinx latex processor
+        # converts it to a proper label reference.
         ref_match = re.search('\\\\ref{(.*?)}', text)
-        #import pdb; pdb.set_trace()
         if ref_match is not None:
             tag_string = ref_match.groups()[0]
             #val = [' :ref:`%s`' % tag_string]
-            val = [' :latex:`%s` ' % text.strip()]
-            self.lines[-1] += ''.join(val)
+            val = [':latex:`\\ref{%s}`' % tag_string]
+            #self.lines[-1] += ''.join(val)
+            self.concat_text(val[0])
+            return
+
+        # If we have <image type="latex"> then skip DoxyImage provided material
+        if 'skipDoxyImage' in self.options:
+            if text.find('DoxyImage') >= 0:
+                return
+
+        #import pdb; pdb.set_trace()
+        # At this point, just pass everything through to latex
+        self.concat_text(':latex:`%s`' % (text))
 
         return
 
@@ -128,10 +133,11 @@ class _DoxygenXmlParagraphFormatter(object):
             tag_string = eqref_match.groups()[0]
             if tag_string.find(',') >= 0:
                 fc = tag_string.find(',')
-                val = [' :math:numref:`%s` - %s' % (tag_string[0:fc],tag_string[fc+1:])]
+                val = [':math:numref:`%s` - %s' % (tag_string[0:fc],tag_string[fc+1:])]
             else:
-                val = [' :math:numref:`%s`' % tag_string]
-            self.lines[-1] += ''.join(val)
+                val = [':math:numref:`%s`' % tag_string]
+            #self.lines[-1] += ''.join(val)
+            self.concat_text(val[0])
             return
 
         # This supports \footnotes{}
@@ -154,8 +160,9 @@ class _DoxygenXmlParagraphFormatter(object):
                 else:
                     self.ns['footnotes'] = [title_string]
 
-                val = " [#]_"
-                self.lines[-1] += ''.join(val)
+                val = ["[#]_"]
+                #self.lines[-1] += ''.join(val)
+                self.concat_text(val[0])
                 return
 
         # Check for \eqref{ replace with :ref:`tag`_
@@ -163,8 +170,9 @@ class _DoxygenXmlParagraphFormatter(object):
         eqref_match = re.search('\\\\eqref{(.*?)}', text)
         if eqref_match is not None:
             tag_string = eqref_match.groups()[0]
-            val = [' :math:numref:`%s`' % tag_string]
-            self.lines[-1] += ''.join(val)
+            val = [':math:numref:`%s`' % tag_string]
+            #self.lines[-1] += ''.join(val)
+            self.concat_text(val[0])
             return
             #import pdb; pdb.set_trace()
 
@@ -191,7 +199,8 @@ class _DoxygenXmlParagraphFormatter(object):
             new_lines = self.lines[0:math_block_idx+1]
             new_label = "   :label: %s" % (self.math_labels[0])
             new_lines.append(new_label)
-            new_lines.append('')
+            #new_lines.append('')
+            self.blank_line()
             new_lines = new_lines + self.lines[math_block_idx+1:]
             self.lines = new_lines
 
@@ -203,9 +212,13 @@ class _DoxygenXmlParagraphFormatter(object):
         if self.verbosity > 0:
             print("[debug] anchor id(%s)" % (node.get('id')))
         #import pdb; pdb.set_trace()
-        implicitLink = '.. _%s:' % (node.get('id'))
+        citeID = node.get('id')
+        if citeID.find('_1CITE') == 0:
+            citeID = "citeref_%s" % (citeID)
+        implicitLink = '.. _%s:' % (citeID)
         self.lines.append(implicitLink)
-        self.lines.append('')
+        #self.lines.append('')
+        self.blank_line()
 
     # Original
     def visit(self, node):
@@ -220,9 +233,29 @@ class _DoxygenXmlParagraphFormatter(object):
         if build_mode:
             if self.verbosity > 2: print("[debug] Setting build mode: %s" % (build_mode))
             self.build_mode = build_mode
+            # Perform a scan for htmlonly or latexonly to prevent double processing of
+            # references
+            if not('scanned' in self.options):
+                self.options.append('scanned')
+                self.scanNode(node)
         for child in node.getchildren():
             self.visit(child)
         return self
+
+    # Scan the node and set appropriate options
+    def scanNode(self, node):
+        xp = node.xpath('//latexonly')
+        if len(xp) > 0:
+            self.options.append('latexonly')
+        xp = node.xpath('//htmlonly')
+        if len(xp) > 0:
+            self.options.append('htmlonly')
+        #import pdb; pdb.set_trace()
+
+        if 'latexonly' in self.options:
+            xp = node.xpath('//image[@type="latex"]')
+            if len(xp) > 0:
+                self.options.append('skipDoxyImage')
 
     # This is the original version with some debug
     # statements
@@ -266,7 +299,8 @@ class _DoxygenXmlParagraphFormatter(object):
                 real_name = name_node.text.split('::')[-1]
             else:
                 if self.verbosity > 0: print("[debug] unimplemented link")
-                self.lines[-1] += '(unimplemented link)' + node.text
+                #self.lines[-1] += '(unimplemented link %s)' % node.text
+                self.concat_text('(unimplemented link %s)' % node.text)
                 return
         else:
             # couldn't find link
@@ -291,7 +325,8 @@ class _DoxygenXmlParagraphFormatter(object):
 
         if self.verbosity > 0: print("[debug] kind(%s) real_name(%s) name_node(%s) val(%s)" %
             (kind, real_name, name_node, val))
-        self.lines[-1] += ''.join(val)
+        #self.lines[-1] += ''.join(val)
+        self.concat_text(''.join(val))
 
     # This was the modified original
     def visit_ref(self, node):
@@ -303,10 +338,11 @@ class _DoxygenXmlParagraphFormatter(object):
 
         # debug
         #if refid == 'General_Coordinate':
-        #  import pdb; pdb.set_trace()
         ref = get_doxygen_root().findall('.//*[@id="%s"]' % refid)
         if self.verbosity > 0: print("[debug] refid(%s) kindref(%s) ref(%s)" %
             (refid, node.get('kindref'), ref))
+        #if refid.find('wright1997') >= 0:
+        #    import pdb; pdb.set_trace()
         if ref:
             ref = ref[0]
             kind = ref.get('kind')
@@ -319,9 +355,9 @@ class _DoxygenXmlParagraphFormatter(object):
                 if kind == 'page':
                     # :ref: works, but requires an explicit tag placed at the top of pages
                     # that generates an INFO message.  FIX LATER.
-                    val = [':ref:`%s` ' % ref.get('id')]
-                    #val = ['`%s`_' % refid]
-                    self.lines[-1] += ''.join(val)
+                    val = [':ref:`%s`' % ref.get('id')]
+                    #self.lines[-1] += ''.join(val)
+                    self.concat_text(val[0])
                     return
                 name_node = ref.find('./name')
                 real_name = name_node.text if name_node is not None else ''
@@ -330,7 +366,8 @@ class _DoxygenXmlParagraphFormatter(object):
                 if refid.find('_1CITEREF_') >= 0:
                     citation = refid[18:]
                     val = [':cite:`%s`' % (citation)]
-                    self.lines[-1] += ''.join(val)
+                    #self.lines[-1] += ''.join(val)
+                    self.concat_text(val[0])
                     return
                 # Capture sectional links
                 #import pdb; pdb.set_trace()
@@ -342,11 +379,12 @@ class _DoxygenXmlParagraphFormatter(object):
                     refid2 = refid[refid.find('_1')+2:]
                     if reftext != '' and reftext != refid2:
                         if self.verbosity > 0: print("[debug] refid2(%s) reftext(%s)" % (refid2,reftext))
-                        val = [':ref:`%s<%s>` ' % (reftext,refid)]
+                        val = [':ref:`%s<%s>`' % (reftext,refid)]
                     else:
                         if self.verbosity > 0: print("[debug] refid(%s)" % (refid))
-                        val = [':ref:`%s` ' % refid]
-                    self.lines[-1] += ''.join(val)
+                        val = [':ref:`%s`' % refid]
+                    #self.lines[-1] += ''.join(val)
+                    self.concat_text(val[0])
                     return
                 else:
                     print('[error] Unimplemented anchor tag: %s' % (ref.tag))
@@ -362,8 +400,9 @@ class _DoxygenXmlParagraphFormatter(object):
         # Older doxygen support 1.8.13 for citation references
         if node.get('kindref') == 'member' and refid.find('_1CITEREF_') >= 0:
             citation = refid[18:]
-            val = [':cite:`%s` ' % (citation)]
-            self.lines[-1] += ''.join(val)
+            val = [':cite:`%s`' % (citation)]
+            #self.lines[-1] += ''.join(val)
+            self.concat_text(val[0])
             return
 
         # if kind='file' treat as file references
@@ -371,8 +410,9 @@ class _DoxygenXmlParagraphFormatter(object):
             #import pdb; pdb.set_trace()
             # for now treat these as text
             # TODO: references to code
-            val = ['``%s`` ' % node.text]
-            self.lines[-1] += ''.join(val)
+            val = ['``%s``' % node.text]
+            #self.lines[-1] += ''.join(val)
+            self.concat_text(val[0])
             return
 
         #debug
@@ -391,7 +431,8 @@ class _DoxygenXmlParagraphFormatter(object):
 
         if self.verbosity > 0: print("[debug] kind(%s) real_name(%s) node_name(%s)" %
             (kind, real_name, name_node))
-        self.lines[-1] += ''.join(val)
+        #self.lines[-1] += ''.join(val)
+        self.concat_text(''.join(val))
 
     # add visit_ulink
     def visit_ulink(self, node):
@@ -399,10 +440,13 @@ class _DoxygenXmlParagraphFormatter(object):
 
     # add visit_emphasis
     def visit_emphasis(self, node):
-        self.para_text('*%s* ' % node.text)
+        self.para_text('*%s*' % node.text)
 
     # add role_text
     def role_text(self, node, role):
+        # Is this even used?
+        if self.verbosity > 0:
+            print("[debug] role_text")
         # XXX we should probably escape preceeding whitespace...
         # but there's no backward equivalent of `tail`
         text = ' :%s:`%s`' % (role, node.text)
@@ -472,11 +516,15 @@ class _DoxygenXmlParagraphFormatter(object):
                 caption = caption.replace(replStr, newStr)
                 m = re.search(mathCommand, caption)
 
+            # For html, scan for \\f and remove that too
+            if image_type == 'html':
+                caption = caption.replace('\\f','')
+
             if self.verbosity > 0:
                 # For math we have to double the number of escapes so we pass an
                 # escape from RST to HTML.
                 print("[debug] caption text(%s)" % (caption))
-            self.lines.extend(['', "   %s" % (caption), '', ''])
+            self.lines.extend(['', "   %s" % (caption), ''])
 
     # add visit_superscript
     def visit_superscript(self, node):
@@ -490,6 +538,11 @@ class _DoxygenXmlParagraphFormatter(object):
     # Support for doxygen 1.8.13 as it passes everything to <para>
     # Support for doxygen \footnote{}
     def visit_sup(self, node):
+
+        # Skip if we detect htmlonly or latexonly
+        if self.para_ignore():
+            return
+
         title_string = node.get('title')
         if title_string:
             citeCommand = '@cite ([\w\-\_]+)'
@@ -505,15 +558,24 @@ class _DoxygenXmlParagraphFormatter(object):
             else:
                 self.ns['footnotes'] = [title_string]
 
-            val = " [#]_ "
-            self.lines[-1] += ''.join(val)
+            val = ["[#]_"]
+            #self.lines[-1] += ''.join(val)
+            self.concat_text(val[0])
             #import pdb; pdb.set_trace()
+
+    # Ignore duplicates provided by xmlonly if we detect latexonly or htmlonly
+    def para_ignore(self):
+
+        if 'latexonly' in self.options or 'htmlonly' in self.options:
+            return True
+        return False
 
     # add replace any references of \eqref, \eqref2, \eqref4
     # Doxygen 1.8.13
     # html: use eqref2; remove eqref4
     # latex: use eqref4; remove eqref2
     # with appropriate replacements
+    # Remove duplicates here if latexonly or htmlonly is detected
     def para_eqref(self, text):
 
         chg = True
@@ -528,6 +590,8 @@ class _DoxygenXmlParagraphFormatter(object):
                     sphinxRef = ':math:numref:`%s` - %s' % (ref[0:i],ref[i+1:])
                     if self.build_mode in ('latexpdf','latex'):
                         sphinxRef = ''
+                    if self.para_ignore():
+                        sphinxRef = ''
                     text = text.replace(fullRef, sphinxRef)
                     chg = True
                 #import pdb; pdb.set_trace()
@@ -539,7 +603,12 @@ class _DoxygenXmlParagraphFormatter(object):
             if m:
                 ref = m.groups()[0]
                 fullRef = '\\\\eqref{%s}' % (ref)
-                sphinxRef = ':math:numref:`%s`' % (ref)
+                if self.build_mode in ('latexpdf','latex'):
+                    sphinxRef = ':latex:`\\ref{%s}`' % ref
+                else:
+                    sphinxRef = ':math:numref:`%s`' % (ref)
+                if self.para_ignore():
+                    sphinxRef = ''
                 text = text.replace(fullRef, sphinxRef)
                 chg = True
             #import pdb; pdb.set_trace()
@@ -554,32 +623,114 @@ class _DoxygenXmlParagraphFormatter(object):
                 sphinxRef = ':latex:`\\ref{%s}`' % (ref)
                 if self.build_mode in ('html'):
                     sphinxRef = ''
+                if self.para_ignore():
+                    sphinxRef = ''
                 text = text.replace(fullRef, sphinxRef)
                 chg = True
             #import pdb; pdb.set_trace()
 
         return text
 
+    # Assistant for ensuring there is blank lines between directives
+    # It makes sure we do not overly add blank lines
+    def blank_line(self):
+        if len(self.lines) == 0:
+            return
+
+        if self.lines[-1] == '':
+            return
+
+        self.lines.append('')
+
+    # Assistant for putting sentences together
+    def concat_text(self, text):
+        if len(self.lines) == 0:
+            self.lines.append(text)
+            return
+
+        lastLine = self.lines[-1]
+
+        if len(lastLine) == 0:
+            self.lines[-1] = text
+            return
+
+        lastChar = lastLine[-1]
+        newText = text
+        if len(newText) == 0:
+            return
+
+        firstChar = newText[0]
+
+        # Emphasis
+        if lastChar == "*" or firstChar == "*":
+            newText = " %s" % (newText)
+            firstChar = " "
+
+        # whitespace after :cite:`tag`
+        if lastChar == '`':
+            if (firstChar >= 'a' and firstChar <= 'z') or (firstChar >= 'A' and firstChar <= 'Z') or firstChar in ['(','[','{']:
+                newText = " %s" % (newText)
+                firstChar = " "
+
+        # whitespace before :commands:
+        if firstChar == ':':
+            if (lastChar >= 'a' and lastChar <= 'z') or (lastChar >= 'A' and lastChar <= 'Z') or lastChar in [',','.','=']:
+                newText = " %s" % (newText)
+                firstChar = " "
+
+        # Footnotes and any items that end with _
+        if newText == '[#]_':
+            newText = " %s" % (newText)
+        if lastChar == '_':
+            if len(lastLine) > 3:
+                if lastLine[-4:] == "[#]_" and firstChar != '.':
+                    newText = " %s" % (newText)
+                    firstChar = " "
+                else:
+                    newText = " %s" % (newText)
+
+        # Inline text check for space before (``)
+        if len(newText) >= 2:
+            if newText[0:2] == "``" and lastChar != ' ':
+                newText = " %s" % (newText)
+                firstChar = " "
+
+        self.lines[-1] += newText
+        return
+
     # add para_text parser
     # Doxygen 1.8.13 support for \eqref \eqref2
     def para_text(self, text):
+
         if text is not None:
+            if text.find('Some time later') >= 0:
+                #import pdb; pdb.set_trace()
+                a = 0
+
             if text.find('eqref') >= 0:
                 text = self.para_eqref(text)
             if self.continue_line:
-                self.lines[-1] += text
+                if len(self.lines) >= 1:
+                    # If we are in a continue_line situation but already
+                    # have a linefeed, do an append instead
+                    if self.lines[-1] == '':
+                        self.lines.append(text)
+                        return
+                self.concat_text(text)
             else:
-                self.lines.append(text.lstrip())
+                self.lines.append(text)
 
     def visit_para(self, node):
+
         self.para_text(node.text)
 
         # visit children and append tail
         for child in node.getchildren():
             self.visit(child)
+            self.continue_line = True
+
             if child.tail is not None:
                 self.para_text(child.tail.lstrip())
-            self.continue_line = True
 
         # replaced
         #if node.text is not None:
@@ -589,12 +740,13 @@ class _DoxygenXmlParagraphFormatter(object):
         #        self.lines.append(node.text)
         #self.generic_visit(node)
 
-        self.lines.append('')
         self.continue_line = False
+        #self.lines.append('')
+        self.blank_line()
 
     # add visit_formula
     def visit_formula(self, node):
-        text = node.text.strip()
+        text = node.text
 
         # Remove the faked link for pdf version
         if self.build_mode in ('latexpdf','latex'):
@@ -614,14 +766,18 @@ class _DoxygenXmlParagraphFormatter(object):
             if len(self.math_labels) > 0:
                 self.emit_math_labels()
 
-            self.lines.append('')
+            #self.lines.append('')
+            self.blank_line()
             self.lines.append('.. math:: ' + text)
-            self.lines.append('')
+            self.blank_line()
+            # Math blocks require an explicit blank line as well?
+            #self.lines.append('')
             self.continue_line = False
         else:
-            inline = ':math:`' + node.text.strip()[1:-1].strip() + '` '
+            inline = ':math:`' + node.text.strip()[1:-1].strip() + '`'
             if self.continue_line:
-                self.lines[-1] += inline
+                #self.lines[-1] += inline
+                self.concat_text(inline)
             else:
                 self.lines.append(inline)
 
@@ -682,10 +838,12 @@ class _DoxygenXmlParagraphFormatter(object):
         # Add bold text psudo section for \see, \sa roughly acts like doxygen
         if node.get('kind') in ('see', 'sa'):
             see_also_label = "See also"
-            self.lines.append('')
+            #self.lines.append('')
+            self.blank_line()
             self.lines.append('**%s**' % (see_also_label))
-            self.lines.append('')
-            self.lines.append('')
+            #self.lines.append('')
+            self.blank_line()
+            #self.lines.append('')
             self.generic_visit(node)
     # add
 
@@ -710,10 +868,12 @@ class _DoxygenXmlParagraphFormatter(object):
             # Add a implicit lable for the sections
             implicitLink = '.. _%s:' % (node.get('id'))
             self.lines.append(implicitLink)
-            self.lines.append('')
+            #self.lines.append('')
+            self.blank_line()
             self.lines.append(title)
             self.lines.append(len(title) * char)
-            self.lines.append('')
+            #self.lines.append('')
+            self.blank_line()
 
         self.generic_visit(node)
 
@@ -734,15 +894,17 @@ class _DoxygenXmlParagraphFormatter(object):
     # allows us to handle nested ordered lists
     def visit_orderedlist(self, node):
         self.indent = self.indent + 1
-        self.lines.append('')
         self.generic_visit(node)
+        #self.lines.append('')
+        self.blank_line()
         self.indent = self.indent - 1
 
     # allows us to handle nested itemized lists
     def visit_itemizedlist(self, node):
         self.indent = self.indent + 1
-        self.lines.append('')
         self.generic_visit(node)
+        #self.lines.append('')
+        self.blank_line()
         self.indent = self.indent - 1
 
     # Source of citation and numbering
@@ -766,7 +928,8 @@ class _DoxygenXmlParagraphFormatter(object):
     def preformat_text(self, lines):
         self.lines.extend(('::', ''))
         self.lines.extend(['  ' + l for l in lines])
-        self.lines.append('')
+        #self.lines.append('')
+        self.blank_line()
 
     def visit_preformatted(self, node):
         segment = [node.text if node.text is not None else '']
@@ -800,7 +963,8 @@ class _DoxygenXmlParagraphFormatter(object):
         # add
         # I don't think we can put links inside
         # computeroutput text...
-        self.lines[-1] += '``' + flatten(node) + '`` '
+        #self.lines[-1] += '``' + flatten(node) + '`` '
+        self.concat_text('``' + flatten(node) + '``')
         # omitted
         #return self.visit_preformatted(node)
 
@@ -817,7 +981,8 @@ class _DoxygenXmlParagraphFormatter(object):
         #    raise ValueError(node)
 
     def visit_subscript(self, node):
-        self.lines[-1] += '\ :sub:`%s` %s' % (node.text, node.tail)
+        #self.lines[-1] += '\ :sub:`%s` %s' % (node.text, node.tail)
+        self.concat_text(':sub:`%s` %s' % (node.text, node.tail))
 
     def visit_table(self, node):
         # save the number of columns
@@ -867,7 +1032,8 @@ class _DoxygenXmlParagraphFormatter(object):
 
         self.lines = lines
         # start with a blank
-        self.lines.append('')
+        #self.lines.append('')
+        self.blank_line()
 
         # usual separator line
         sep = '+'
@@ -888,4 +1054,5 @@ class _DoxygenXmlParagraphFormatter(object):
             self.lines.append(sep)
 
         # end with a blank
-        self.lines.append('')
+        #self.lines.append('')
+        self.blank_line()
